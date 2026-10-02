@@ -66,7 +66,10 @@ async function inflateDeflate(bytes: Uint8Array): Promise<Uint8Array> {
     );
   }
 
-  const stream = new Blob([bytes])
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+
+  const stream = new Blob([copy.buffer])
     .stream()
     .pipeThrough(new DecompressionStream("deflate"));
 
@@ -274,47 +277,19 @@ class ProceduralDepthRuntime implements SidecarRuntime {
   }
 }
 
-interface ChunkedSidecarManifest {
-  version: number;
-  mimeType: string;
-  encoding: "base64-chunks";
-  totalBytes: number;
-  sha256?: string;
-  chunks: string[];
-}
-
-function decodeBase64Chunk(value: string): Uint8Array {
-  const binary = atob(value.trim());
-  const bytes = new Uint8Array(binary.length);
-
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-
-  return bytes;
-}
-
 class SyncedVideoTrack {
   readonly video: HTMLVideoElement;
   readonly texture: THREE.VideoTexture;
   readonly clock: PlaybackClock;
   resyncs = 0;
 
-  private objectUrl: string | null = null;
-  private disposed = false;
-
   constructor(track: SidecarTrack) {
     this.video = document.createElement("video");
+    this.video.src = track.url;
     this.video.muted = true;
     this.video.playsInline = true;
     this.video.preload = "auto";
     this.video.crossOrigin = "anonymous";
-
-    if (track.url.endsWith(".chunks.json")) {
-      void this.loadChunkedSidecar(track.url);
-    } else {
-      this.video.src = track.url;
-    }
 
     this.texture = new THREE.VideoTexture(this.video);
     this.texture.colorSpace = THREE.NoColorSpace;
@@ -324,61 +299,6 @@ class SyncedVideoTrack {
     this.texture.wrapT = THREE.ClampToEdgeWrapping;
 
     this.clock = new PlaybackClock(track.timeOffsetSeconds ?? 0);
-  }
-
-  private async loadChunkedSidecar(manifestUrl: string): Promise<void> {
-    try {
-      const manifestResponse = await fetch(manifestUrl);
-
-      if (!manifestResponse.ok) {
-        throw new Error(
-          `Chunked sidecar manifest failed (${manifestResponse.status}).`
-        );
-      }
-
-      const manifest =
-        (await manifestResponse.json()) as ChunkedSidecarManifest;
-
-      if (manifest.encoding !== "base64-chunks") {
-        throw new Error("Unsupported chunked sidecar encoding.");
-      }
-
-      const parts: Uint8Array[] = [];
-      let total = 0;
-
-      for (const chunkPath of manifest.chunks) {
-        const chunkUrl = new URL(chunkPath, manifestUrl).toString();
-        const response = await fetch(chunkUrl);
-
-        if (!response.ok) {
-          throw new Error(
-            `Chunked sidecar part failed (${response.status}): ${chunkPath}`
-          );
-        }
-
-        const decoded = decodeBase64Chunk(await response.text());
-        parts.push(decoded);
-        total += decoded.byteLength;
-      }
-
-      if (manifest.totalBytes && total !== manifest.totalBytes) {
-        throw new Error(
-          `Chunked sidecar size mismatch: expected ${manifest.totalBytes}, got ${total}.`
-        );
-      }
-
-      const blob = new Blob(parts, {
-        type: manifest.mimeType || "video/webm"
-      });
-
-      if (this.disposed) return;
-
-      this.objectUrl = URL.createObjectURL(blob);
-      this.video.src = this.objectUrl;
-      this.video.load();
-    } catch (error) {
-      console.error("Could not load chunked 3D sidecar.", error);
-    }
   }
 
   update(mediaTime: number, playing: boolean): number {
@@ -406,16 +326,9 @@ class SyncedVideoTrack {
   }
 
   dispose(): void {
-    this.disposed = true;
     this.video.pause();
     this.video.removeAttribute("src");
     this.video.load();
-
-    if (this.objectUrl) {
-      URL.revokeObjectURL(this.objectUrl);
-      this.objectUrl = null;
-    }
-
     this.texture.dispose();
   }
 }
