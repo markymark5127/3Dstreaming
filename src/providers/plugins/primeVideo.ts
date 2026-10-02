@@ -6,5 +6,5 @@ export const primeVideoPlugin = new ExternalStreamingPlugin({
   authUrl: "https://www.primevideo.com/",
   browseUrl: "https://www.primevideo.com/",
   searchUrl: (query) =>
-    `https://www.primevideo.com/search?phrase=${encodeURIComponent(query.trim())}`
+    `https://www.primevideo.com/search/?phrase=${encodeURIComponent(query.trim())}`
 });
