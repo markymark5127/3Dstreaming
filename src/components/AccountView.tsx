@@ -1,13 +1,13 @@
 import { FormEvent, useState } from "react";
 import type { UserAccount } from "../auth/types";
-import { providerAdapters } from "../providers/providers";
+import { providerPlugins } from "../providers/providers";
 import type { ProviderId } from "../providers/types";
 
 interface AccountViewProps {
   user: UserAccount | null;
   onSignIn(email: string, displayName: string): Promise<void>;
   onSignOut(): Promise<void>;
-  onProviderOpened(providerId: ProviderId): Promise<void>;
+  onProviderConnect(providerId: ProviderId): Promise<void>;
   onUpload(): void;
 }
 
@@ -15,7 +15,7 @@ export function AccountView({
   user,
   onSignIn,
   onSignOut,
-  onProviderOpened,
+  onProviderConnect,
   onUpload
 }: AccountViewProps) {
   const [email, setEmail] = useState("");
@@ -76,18 +76,18 @@ export function AccountView({
           </div>
 
           <div className="connection-list">
-            {providerAdapters.map((adapter) => {
+            {providerPlugins.map((plugin) => {
               const connection = user.providerConnections.find(
-                (item) => item.providerId === adapter.provider.id
+                (item) => item.providerId === plugin.provider!.id
               );
 
               return (
-                <article className="connection-card" key={adapter.provider.id}>
-                  <div className={`service-logo service-${adapter.provider.id}`}>
-                    {adapter.provider.shortName}
+                <article className="connection-card" key={plugin.provider!.id}>
+                  <div className={`service-logo service-${plugin.provider!.id}`}>
+                    {plugin.provider!.shortName}
                   </div>
                   <div className="connection-copy">
-                    <strong>{adapter.provider.name}</strong>
+                    <strong>{plugin.provider!.name}</strong>
                     <span>
                       {connection?.state === "provider-session"
                         ? "Provider sign-in opened · account linking API still required"
@@ -96,10 +96,7 @@ export function AccountView({
                   </div>
                   <button
                     className="button compact"
-                    onClick={() => {
-                      adapter.openProvider();
-                      void onProviderOpened(adapter.provider.id);
-                    }}
+                    onClick={() => void onProviderConnect(plugin.provider!.id)}
                   >
                     {connection ? "Open" : "Sign in"}
                   </button>
