@@ -3,13 +3,23 @@ import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          transformers: ["@huggingface/transformers"]
+        }
+      }
+    }
+  },
   plugins: [
     react(),
     VitePWA({
       registerType: "autoUpdate",
       workbox: {
         globIgnores: [
-          "**/ort-*.wasm"
+          "**/ort-*.wasm",
+          "**/transformers-*.js"
         ]
       },
       manifest: {
