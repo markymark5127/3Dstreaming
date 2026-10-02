@@ -35,6 +35,25 @@ interface TmdbSearchResponse {
   results?: TmdbSearchItem[];
 }
 
+interface TmdbProviderListResponse {
+  results?: Array<
+    TmdbProvider & {
+      display_priority?: number;
+    }
+  >;
+}
+
+export interface StreamingHomeRow {
+  providerId: ProviderId;
+  providerName: string;
+  items: CatalogItem[];
+}
+
+export interface StreamingHomeResult {
+  rows: StreamingHomeRow[];
+  configured: boolean;
+}
+
 export interface UnifiedCatalogSearchResult {
   items: CatalogItem[];
   configured: boolean;
@@ -178,6 +197,208 @@ function yearFor(item: TmdbSearchItem): number | undefined {
 
   const year = Number(date.slice(0, 4));
   return Number.isFinite(year) ? year : undefined;
+}
+
+function providerName(providerId: ProviderId): string {
+  switch (providerId) {
+    case "netflix":
+      return "Netflix";
+    case "disney-plus":
+      return "Disney+";
+    case "max":
+      return "HBO Max";
+    case "prime-video":
+      return "Prime Video";
+  }
+}
+
+function providerListScore(
+  providerId: ProviderId,
+  provider: TmdbProvider & { display_priority?: number }
+): number {
+  const name = provider.provider_name.trim().toLowerCase();
+  let score = 0;
+
+  switch (providerId) {
+    case "netflix":
+      if (name === "netflix") score += 100;
+      else if (name.startsWith("netflix")) score += 80;
+      break;
+    case "disney-plus":
+      if (name === "disney plus" || name === "disney+") score += 100;
+      else if (name.includes("disney")) score += 70;
+      break;
+    case "max":
+      if (name === "max" || name === "hbo max") score += 100;
+      else if (name.includes("max")) score += 60;
+      break;
+    case "prime-video":
+      if (name === "amazon prime video" || name === "prime video") score += 100;
+      else if (name.includes("prime video")) score += 70;
+      break;
+  }
+
+  if (name.includes("with ads")) score -= 5;
+  score -= (provider.display_priority ?? 1000) * 0.001;
+
+  return score;
+}
+
+async function tmdbProviderIdFor(
+  providerId: ProviderId,
+  mediaType: "movie" | "tv",
+  region: string,
+  signal?: AbortSignal
+): Promise<number | null> {
+  const list = await tmdbFetch<TmdbProviderListResponse>(
+    `/watch/providers/${mediaType}?language=en-US&watch_region=${encodeURIComponent(
+      region.toUpperCase()
+    )}`,
+    signal
+  );
+
+  const candidates = (list.results ?? [])
+    .filter((provider) => normalizeProvider(provider.provider_name) === providerId)
+    .sort(
+      (a, b) =>
+        providerListScore(providerId, b) -
+        providerListScore(providerId, a)
+    );
+
+  return candidates[0]?.provider_id ?? null;
+}
+
+function homeCatalogItem(
+  item: TmdbSearchItem & { media_type: "movie" | "tv" },
+  providerId: ProviderId
+): CatalogItem {
+  const title = titleFor(item);
+  const year = yearFor(item);
+
+  return {
+    id: `tmdb-${item.media_type}-${item.id}`,
+    title,
+    subtitle: `Popular on ${providerName(providerId)}`,
+    kind: item.media_type === "movie" ? "movie" : "series",
+    year,
+    summary: item.overview?.trim() || "No summary available.",
+    artworkClass: "artwork-tmdb",
+    posterUrl: item.poster_path ? `${IMAGE_BASE}${item.poster_path}` : undefined,
+    backdropUrl: item.backdrop_path
+      ? `${BACKDROP_BASE}${item.backdrop_path}`
+      : undefined,
+    profileIds: [],
+    providerIds: [providerId],
+    availableProviderIds: [providerId],
+    externalSource: "tmdb",
+    externalId: item.id
+  };
+}
+
+async function discoverPopularForProvider(
+  providerId: ProviderId,
+  mediaType: "movie" | "tv",
+  tmdbProviderId: number,
+  region: string,
+  signal?: AbortSignal
+): Promise<Array<TmdbSearchItem & { media_type: "movie" | "tv" }>> {
+  const data = await tmdbFetch<TmdbSearchResponse>(
+    `/discover/${mediaType}?include_adult=false&language=en-US&page=1&sort_by=popularity.desc&watch_region=${encodeURIComponent(
+      region.toUpperCase()
+    )}&with_watch_monetization_types=${encodeURIComponent(
+      "flatrate|ads|free"
+    )}&with_watch_providers=${tmdbProviderId}`,
+    signal
+  );
+
+  return (data.results ?? []).map((item) => ({
+    ...item,
+    media_type: mediaType
+  }));
+}
+
+export async function getStreamingHomeRows(
+  providerIds: ProviderId[],
+  region = "US",
+  signal?: AbortSignal
+): Promise<StreamingHomeResult> {
+  if (!token()) {
+    return { rows: [], configured: false };
+  }
+
+  if (providerIds.length === 0) {
+    return { rows: [], configured: true };
+  }
+
+  const rows = await Promise.all(
+    providerIds.map(async (providerId): Promise<StreamingHomeRow> => {
+      try {
+        const [movieProviderId, tvProviderId] = await Promise.all([
+          tmdbProviderIdFor(providerId, "movie", region, signal),
+          tmdbProviderIdFor(providerId, "tv", region, signal)
+        ]);
+
+        const [movies, shows] = await Promise.all([
+          movieProviderId
+            ? discoverPopularForProvider(
+                providerId,
+                "movie",
+                movieProviderId,
+                region,
+                signal
+              )
+            : Promise.resolve([]),
+          tvProviderId
+            ? discoverPopularForProvider(
+                providerId,
+                "tv",
+                tvProviderId,
+                region,
+                signal
+              )
+            : Promise.resolve([])
+        ]);
+
+        const combined = [...movies, ...shows]
+          .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0))
+          .filter((item, index, all) => {
+            const key = `${item.media_type}:${item.id}`;
+            return (
+              all.findIndex(
+                (candidate) =>
+                  `${candidate.media_type}:${candidate.id}` === key
+              ) === index
+            );
+          })
+          .slice(0, 12)
+          .map((item) => homeCatalogItem(item, providerId));
+
+        return {
+          providerId,
+          providerName: providerName(providerId),
+          items: combined
+        };
+      } catch (error) {
+        if (signal?.aborted) throw error;
+
+        console.warn(
+          `Could not populate ${providerName(providerId)} home row.`,
+          error
+        );
+
+        return {
+          providerId,
+          providerName: providerName(providerId),
+          items: []
+        };
+      }
+    })
+  );
+
+  return {
+    configured: true,
+    rows: rows.filter((row) => row.items.length > 0)
+  };
 }
 
 export async function searchUnifiedCatalog(
