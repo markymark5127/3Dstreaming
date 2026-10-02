@@ -4,23 +4,40 @@ import {
   type StereoPlaybackOptions
 } from "./StereoPlayback";
 
+export type StereoPreviewMode = "window" | "cardboard";
+
 export interface StereoPreviewHandle {
   end(): void;
   setControls(strength: number, convergence: number, popOutLimit: number): void;
 }
 
+type LockableOrientation = ScreenOrientation & {
+  lock?: (orientation: "landscape") => Promise<void>;
+  unlock?: () => void;
+};
+
 export function startStereoPreview(
   video: HTMLVideoElement,
-  options: StereoPlaybackOptions
+  options: StereoPlaybackOptions,
+  mode: StereoPreviewMode = "window"
 ): StereoPreviewHandle {
-  const resources = createStereoPlayback(video, { ...options, autoEyeFromCamera: false });
+  const resources = createStereoPlayback(video, {
+    ...options,
+    autoEyeFromCamera: false
+  });
 
   const container = document.createElement("div");
-  container.className = "stereo-preview-overlay";
+  container.className =
+    mode === "cardboard"
+      ? "stereo-preview-overlay cardboard-mode"
+      : "stereo-preview-overlay";
 
   const header = document.createElement("div");
   header.className = "stereo-preview-header";
-  header.innerHTML = "<strong>SBS stereo preview</strong><span>Left eye · Right eye</span>";
+  header.innerHTML =
+    mode === "cardboard"
+      ? "<strong>Cardboard mode</strong><span>Left eye · Right eye</span>"
+      : "<strong>SBS stereo preview</strong><span>Left eye · Right eye</span>";
 
   const close = document.createElement("button");
   close.type = "button";
@@ -41,19 +58,38 @@ export function startStereoPreview(
   camera.position.set(0, 1.6, 0);
 
   let disposed = false;
+  let enteredFullscreen = false;
 
   const resize = () => {
+    if (mode === "cardboard") {
+      renderer.setSize(window.innerWidth, window.innerHeight, false);
+      return;
+    }
+
     const width = Math.min(window.innerWidth - 60, 1400);
     const height = Math.min(window.innerHeight - 150, 760);
     renderer.setSize(width, height, false);
   };
 
+  const unlockOrientation = () => {
+    const orientation = screen.orientation as LockableOrientation | undefined;
+    try {
+      orientation?.unlock?.();
+    } catch {
+      // Orientation APIs vary across browsers.
+    }
+  };
+
   const end = () => {
     if (disposed) return;
     disposed = true;
+
     renderer.setAnimationLoop(null);
     window.removeEventListener("resize", resize);
     window.removeEventListener("keydown", onKeyDown);
+    document.removeEventListener("fullscreenchange", onFullscreenChange);
+
+    unlockOrientation();
     resources.dispose();
     renderer.dispose();
     container.remove();
@@ -63,10 +99,48 @@ export function startStereoPreview(
     if (event.key === "Escape") end();
   };
 
-  close.addEventListener("click", end, { once: true });
+  const onFullscreenChange = () => {
+    resize();
+
+    if (
+      mode === "cardboard" &&
+      enteredFullscreen &&
+      document.fullscreenElement !== container
+    ) {
+      end();
+    }
+  };
+
+  close.addEventListener("click", () => {
+    if (document.fullscreenElement === container) {
+      void document.exitFullscreen().finally(end);
+    } else {
+      end();
+    }
+  }, { once: true });
+
   window.addEventListener("keydown", onKeyDown);
-  resize();
   window.addEventListener("resize", resize);
+  document.addEventListener("fullscreenchange", onFullscreenChange);
+
+  resize();
+
+  if (mode === "cardboard") {
+    void container.requestFullscreen?.().then(async () => {
+      enteredFullscreen = true;
+      resize();
+
+      const orientation = screen.orientation as LockableOrientation | undefined;
+      try {
+        await orientation?.lock?.("landscape");
+      } catch {
+        // Full-screen SBS still works if orientation lock is unavailable.
+      }
+    }).catch(() => {
+      // Some mobile browsers restrict the Fullscreen API. The overlay still fills
+      // the browser viewport as a graceful fallback.
+    });
+  }
 
   renderer.setAnimationLoop(() => {
     if (disposed) return;
@@ -77,7 +151,7 @@ export function startStereoPreview(
     const height = renderer.domElement.height / pixelRatio;
     const eyeWidth = width / 2;
 
-    camera.aspect = eyeWidth / height;
+    camera.aspect = eyeWidth / Math.max(1, height);
     camera.updateProjectionMatrix();
 
     renderer.setScissorTest(true);
