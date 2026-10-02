@@ -19,8 +19,13 @@
     "@types/three": "^0.180.0",
     "@types/webxr": "^0.5.22",
     "@vitejs/plugin-react": "^5.0.4",
+    "browserslist": "^4.29.3",
+    "caniuse-lite": "^1.0.30001814",
     "typescript": "^5.9.3",
     "vite": "^7.1.7",
     "vite-plugin-pwa": "^1.0.3"
+  },
+  "allowScripts": {
+    "esbuild": true
   }
 }

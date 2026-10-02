@@ -5,11 +5,13 @@ export type ProviderCapability =
   | "provider-owned-playback"
   | "catalog-search"
   | "embedded-playback"
-  | "timeline-bridge";
+  | "timeline-bridge"
+  | "oauth-account-link";
 
 export interface StreamingProvider {
   id: ProviderId;
   name: string;
+  shortName: string;
   homeUrl: string;
   capabilities: ProviderCapability[];
   integrationStatus: "browser-only" | "research" | "official-api";
