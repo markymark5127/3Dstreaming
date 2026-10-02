@@ -1,5 +1,5 @@
 import { ExternalStreamingPlugin } from "../ExternalStreamingPlugin";
-import { providersById } from "../providers";
+import { providersById } from "../manifests";
 
 export const disneyPlusPlugin = new ExternalStreamingPlugin({
   provider: providersById["disney-plus"],
