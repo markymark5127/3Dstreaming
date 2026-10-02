@@ -4,62 +4,16 @@ export const catalog: CatalogItem[] = [
   {
     id: "big-buck-bunny",
     title: "Big Buck Bunny",
-    subtitle: "Community 3D demo",
+    subtitle: "Community 3D map available",
     kind: "movie",
     year: 2008,
-    runtimeLabel: "9 min",
-    summary: "An open movie used to prove the shared sidecar, edition matching, and XR playback pipeline.",
+    runtimeLabel: "9m 56s",
+    summary:
+      "The first real published 3Dstreaming community map: a Depth Anything V2 depth sidecar for the 720p H.264 Big Buck Bunny cut.",
     artworkClass: "artwork-bunny",
-    profileIds: ["demo-big-buck-bunny"],
+    profileIds: ["41654621-2451-4d9c-baf9-0062d8522b39"],
     providerIds: ["local"],
     featured: true
-  },
-  {
-    id: "sintel",
-    title: "Sintel",
-    subtitle: "Community disparity demo",
-    kind: "movie",
-    year: 2010,
-    runtimeLabel: "15 min",
-    summary: "A second open movie profile used to test community-authored disparity tracks.",
-    artworkClass: "artwork-sintel",
-    profileIds: ["demo-sintel"],
-    providerIds: ["local"]
-  },
-  {
-    id: "tears-of-steel",
-    title: "Tears of Steel",
-    subtitle: "Awaiting a community profile",
-    kind: "movie",
-    year: 2012,
-    runtimeLabel: "12 min",
-    summary: "Catalog entries can exist before a 3D conversion is contributed.",
-    artworkClass: "artwork-steel",
-    profileIds: [],
-    providerIds: ["local"]
-  },
-  {
-    id: "cosmos-laundromat",
-    title: "Cosmos Laundromat",
-    subtitle: "Awaiting a community profile",
-    kind: "movie",
-    year: 2015,
-    runtimeLabel: "12 min",
-    summary: "A title can later receive multiple community versions for different cuts or sources.",
-    artworkClass: "artwork-cosmos",
-    profileIds: [],
-    providerIds: ["local"]
-  },
-  {
-    id: "caminandes",
-    title: "Caminandes",
-    subtitle: "Short-film collection",
-    kind: "series",
-    year: 2013,
-    summary: "Series-level catalog entries are ready for season and episode-specific 3D mappings.",
-    artworkClass: "artwork-caminandes",
-    profileIds: [],
-    providerIds: ["local"]
   }
 ];
 
