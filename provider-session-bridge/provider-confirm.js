@@ -25,7 +25,7 @@
 
   const button = document.createElement("button");
   button.id = "3dstreaming-confirm-session";
-  button.textContent = `✓ Confirm ${names[providerId]} for 3Dstreaming`;
+  button.textContent = `✓ I’m signed in — confirm ${names[providerId]}`;
 
   Object.assign(button.style, {
     position: "fixed",
