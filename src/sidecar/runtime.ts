@@ -2,8 +2,10 @@ import * as THREE from "three";
 import { PlaybackClock } from "../core/PlaybackClock";
 import type { SidecarTrack, ThreeDProfile } from "../types/threeDProfile";
 
+export type SidecarRenderMode = "depth" | "disparity";
+
 export interface SidecarRuntimeState {
-  mode: "video-depth" | "procedural-depth";
+  mode: "video-depth" | "video-disparity" | "procedural-depth";
   mediaTime: number;
   sidecarTime: number;
   drift: number;
@@ -11,14 +13,34 @@ export interface SidecarRuntimeState {
 }
 
 export interface SidecarRuntime {
-  readonly texture: THREE.Texture;
+  readonly mode: SidecarRenderMode;
+  readonly depthTexture: THREE.Texture;
+  readonly leftDisparityTexture: THREE.Texture;
+  readonly rightDisparityTexture: THREE.Texture;
   readonly state: SidecarRuntimeState;
   update(mediaTime: number, playing: boolean): void;
   dispose(): void;
 }
 
+function makeNeutralTexture(value: number): THREE.DataTexture {
+  const byte = Math.round(THREE.MathUtils.clamp(value, 0, 1) * 255);
+  const texture = new THREE.DataTexture(
+    new Uint8Array([byte, byte, byte, 255]),
+    1,
+    1,
+    THREE.RGBAFormat
+  );
+  texture.needsUpdate = true;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  return texture;
+}
+
 class ProceduralDepthRuntime implements SidecarRuntime {
-  readonly texture: THREE.DataTexture;
+  readonly mode = "depth" as const;
+  readonly depthTexture: THREE.DataTexture;
+  readonly leftDisparityTexture = makeNeutralTexture(0.5);
+  readonly rightDisparityTexture = makeNeutralTexture(0.5);
   readonly state: SidecarRuntimeState = {
     mode: "procedural-depth",
     mediaTime: 0,
@@ -37,8 +59,9 @@ class ProceduralDepthRuntime implements SidecarRuntime {
         const center = Math.max(0, 1 - Math.sqrt(nx * nx + ny * ny));
         const vertical = 1 - y / Math.max(1, height - 1);
         const depth = Math.round(
-          THREE.MathUtils.clamp(center * 0.7 + vertical * 0.3, 0, 1) * 255
+          THREE.MathUtils.clamp(center * 0.72 + vertical * 0.28, 0, 1) * 255
         );
+
         const i = (y * width + x) * 4;
         data[i] = depth;
         data[i + 1] = depth;
@@ -47,12 +70,12 @@ class ProceduralDepthRuntime implements SidecarRuntime {
       }
     }
 
-    this.texture = new THREE.DataTexture(data, width, height, THREE.RGBAFormat);
-    this.texture.needsUpdate = true;
-    this.texture.minFilter = THREE.LinearFilter;
-    this.texture.magFilter = THREE.LinearFilter;
-    this.texture.wrapS = THREE.ClampToEdgeWrapping;
-    this.texture.wrapT = THREE.ClampToEdgeWrapping;
+    this.depthTexture = new THREE.DataTexture(data, width, height, THREE.RGBAFormat);
+    this.depthTexture.needsUpdate = true;
+    this.depthTexture.minFilter = THREE.LinearFilter;
+    this.depthTexture.magFilter = THREE.LinearFilter;
+    this.depthTexture.wrapS = THREE.ClampToEdgeWrapping;
+    this.depthTexture.wrapT = THREE.ClampToEdgeWrapping;
   }
 
   update(mediaTime: number): void {
@@ -62,23 +85,17 @@ class ProceduralDepthRuntime implements SidecarRuntime {
   }
 
   dispose(): void {
-    this.texture.dispose();
+    this.depthTexture.dispose();
+    this.leftDisparityTexture.dispose();
+    this.rightDisparityTexture.dispose();
   }
 }
 
-class VideoDepthRuntime implements SidecarRuntime {
+class SyncedVideoTrack {
+  readonly video: HTMLVideoElement;
   readonly texture: THREE.VideoTexture;
-  readonly state: SidecarRuntimeState = {
-    mode: "video-depth",
-    mediaTime: 0,
-    sidecarTime: 0,
-    drift: 0,
-    resyncs: 0
-  };
-
-  private readonly video: HTMLVideoElement;
-  private readonly clock: PlaybackClock;
-  private disposed = false;
+  readonly clock: PlaybackClock;
+  resyncs = 0;
 
   constructor(track: SidecarTrack) {
     this.video = document.createElement("video");
@@ -87,7 +104,6 @@ class VideoDepthRuntime implements SidecarRuntime {
     this.video.playsInline = true;
     this.video.preload = "auto";
     this.video.crossOrigin = "anonymous";
-    this.video.loop = false;
 
     this.texture = new THREE.VideoTexture(this.video);
     this.texture.colorSpace = THREE.NoColorSpace;
@@ -99,28 +115,18 @@ class VideoDepthRuntime implements SidecarRuntime {
     this.clock = new PlaybackClock(track.timeOffsetSeconds ?? 0);
   }
 
-  update(mediaTime: number, playing: boolean): void {
-    if (this.disposed) return;
-
+  update(mediaTime: number, playing: boolean): number {
     const sidecarTime = Number.isFinite(this.video.currentTime)
       ? this.video.currentTime
       : 0;
 
-    const snapshot = this.clock.snapshot(mediaTime, sidecarTime);
-
-    this.state.mediaTime = mediaTime;
-    this.state.sidecarTime = sidecarTime;
-    this.state.drift = snapshot.drift;
-
     if (this.clock.shouldResync(mediaTime, sidecarTime)) {
       const target = this.clock.targetSidecarTime(mediaTime);
-      if (Number.isFinite(target)) {
-        try {
-          this.video.currentTime = target;
-          this.state.resyncs += 1;
-        } catch {
-          // The media element may not be seekable until metadata arrives.
-        }
+      try {
+        this.video.currentTime = target;
+        this.resyncs += 1;
+      } catch {
+        // Not seekable until metadata arrives. The next update retries.
       }
     }
 
@@ -129,10 +135,11 @@ class VideoDepthRuntime implements SidecarRuntime {
     } else if (!playing && !this.video.paused) {
       this.video.pause();
     }
+
+    return sidecarTime;
   }
 
   dispose(): void {
-    this.disposed = true;
     this.video.pause();
     this.video.removeAttribute("src");
     this.video.load();
@@ -140,12 +147,98 @@ class VideoDepthRuntime implements SidecarRuntime {
   }
 }
 
-export function createSidecarRuntime(profile?: ThreeDProfile | null): SidecarRuntime {
-  const track = profile?.tracks.find((item) => item.kind === "depth");
+class VideoDepthRuntime implements SidecarRuntime {
+  readonly mode = "depth" as const;
+  readonly leftDisparityTexture = makeNeutralTexture(0.5);
+  readonly rightDisparityTexture = makeNeutralTexture(0.5);
+  readonly depthTexture: THREE.Texture;
+  readonly state: SidecarRuntimeState = {
+    mode: "video-depth",
+    mediaTime: 0,
+    sidecarTime: 0,
+    drift: 0,
+    resyncs: 0
+  };
 
-  if (track?.url) {
-    return new VideoDepthRuntime(track);
+  private readonly track: SyncedVideoTrack;
+
+  constructor(track: SidecarTrack) {
+    this.track = new SyncedVideoTrack(track);
+    this.depthTexture = this.track.texture;
   }
 
-  return new ProceduralDepthRuntime();
+  update(mediaTime: number, playing: boolean): void {
+    const sidecarTime = this.track.update(mediaTime, playing);
+    const snapshot = this.track.clock.snapshot(mediaTime, sidecarTime);
+
+    this.state.mediaTime = mediaTime;
+    this.state.sidecarTime = sidecarTime;
+    this.state.drift = snapshot.drift;
+    this.state.resyncs = this.track.resyncs;
+  }
+
+  dispose(): void {
+    this.track.dispose();
+    this.leftDisparityTexture.dispose();
+    this.rightDisparityTexture.dispose();
+  }
+}
+
+class VideoDisparityRuntime implements SidecarRuntime {
+  readonly mode = "disparity" as const;
+  readonly depthTexture = makeNeutralTexture(0.5);
+  readonly leftDisparityTexture: THREE.Texture;
+  readonly rightDisparityTexture: THREE.Texture;
+  readonly state: SidecarRuntimeState = {
+    mode: "video-disparity",
+    mediaTime: 0,
+    sidecarTime: 0,
+    drift: 0,
+    resyncs: 0
+  };
+
+  private readonly left: SyncedVideoTrack;
+  private readonly right: SyncedVideoTrack;
+
+  constructor(left: SidecarTrack, right: SidecarTrack) {
+    this.left = new SyncedVideoTrack(left);
+    this.right = new SyncedVideoTrack(right);
+    this.leftDisparityTexture = this.left.texture;
+    this.rightDisparityTexture = this.right.texture;
+  }
+
+  update(mediaTime: number, playing: boolean): void {
+    const leftTime = this.left.update(mediaTime, playing);
+    const rightTime = this.right.update(mediaTime, playing);
+    const sidecarTime = (leftTime + rightTime) * 0.5;
+    const leftDrift = this.left.clock.snapshot(mediaTime, leftTime).drift;
+    const rightDrift = this.right.clock.snapshot(mediaTime, rightTime).drift;
+
+    this.state.mediaTime = mediaTime;
+    this.state.sidecarTime = sidecarTime;
+    this.state.drift = Math.max(Math.abs(leftDrift), Math.abs(rightDrift));
+    this.state.resyncs = this.left.resyncs + this.right.resyncs;
+  }
+
+  dispose(): void {
+    this.left.dispose();
+    this.right.dispose();
+    this.depthTexture.dispose();
+  }
+}
+
+export function createSidecarRuntime(profile?: ThreeDProfile | null): SidecarRuntime {
+  const depth = profile?.tracks.find((item) => item.kind === "depth");
+  const left = profile?.tracks.find((item) => item.kind === "disparity-left");
+  const right = profile?.tracks.find((item) => item.kind === "disparity-right");
+
+  if (left?.url && right?.url && !left.url.startsWith("procedural:") && !right.url.startsWith("procedural:")) {
+    return new VideoDisparityRuntime(left, right);
+  }
+
+  if (depth?.url && !depth.url.startsWith("procedural:")) {
+    return new VideoDepthRuntime(depth);
+  }
+
+  return new ProceduralDepthRuntime(depth?.width ?? 320, depth?.height ?? 180);
 }
