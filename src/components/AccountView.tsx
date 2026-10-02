@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import type { UserAccount } from "../auth/types";
+import type { ProviderConnection, UserAccount } from "../auth/types";
 import { providerPlugins } from "../providers/providers";
 import type { ProviderId } from "../providers/types";
 
@@ -8,7 +8,36 @@ interface AccountViewProps {
   onSignIn(email: string, displayName: string): Promise<void>;
   onSignOut(): Promise<void>;
   onProviderConnect(providerId: ProviderId): Promise<void>;
+  onProviderConfirm(providerId: ProviderId): Promise<void>;
+  onProviderDeactivate(providerId: ProviderId): Promise<void>;
   onUpload(): void;
+}
+
+function isActive(connection?: ProviderConnection): boolean {
+  return connection?.state === "session-active" || connection?.state === "oauth-connected";
+}
+
+function connectionLabel(connection?: ProviderConnection): string {
+  if (!connection || connection.state === "not-connected") {
+    return "Not connected";
+  }
+
+  if (connection.state === "provider-session") {
+    return "Sign-in opened · confirm after you finish signing in";
+  }
+
+  if (connection.state === "needs-verification") {
+    return "Session needs confirmation";
+  }
+
+  if (isActive(connection)) {
+    const confirmed = connection.sessionConfirmedAt ?? connection.lastVerifiedAt;
+    if (!confirmed) return "Active · signed-in session confirmed";
+
+    return `Active · confirmed ${new Date(confirmed).toLocaleDateString()}`;
+  }
+
+  return "Connected";
 }
 
 export function AccountView({
@@ -16,6 +45,8 @@ export function AccountView({
   onSignIn,
   onSignOut,
   onProviderConnect,
+  onProviderConfirm,
+  onProviderDeactivate,
   onUpload
 }: AccountViewProps) {
   const [email, setEmail] = useState("");
@@ -30,10 +61,11 @@ export function AccountView({
     return (
       <section className="content-section narrow-section">
         <span className="kicker">3DSTREAMING ACCOUNT</span>
-        <h1 className="page-title">Sign in to contribute.</h1>
+        <h1 className="page-title">Sign in to connect your services.</h1>
         <p className="page-copy">
-          Your 3Dstreaming account owns your uploads, ratings, revisions, and provider
-          connection records. Provider passwords never belong to this account.
+          Your 3Dstreaming account remembers which streaming services you use, your
+          community mappings, ratings, and revisions. Provider passwords stay with the
+          provider.
         </p>
 
         <form className="account-form" onSubmit={(event) => void submit(event)}>
@@ -47,7 +79,8 @@ export function AccountView({
           </label>
           <button className="button primary" type="submit">Create / sign in</button>
           <small>
-            Prototype only: this branch stores the account in this browser. Hosted authentication replaces this before production.
+            Prototype account: stored in this browser for now. Hosted authentication replaces
+            this before production.
           </small>
         </form>
       </section>
@@ -71,44 +104,88 @@ export function AccountView({
           <div className="section-title-row">
             <div>
               <span className="kicker">STREAMING SERVICES</span>
-              <h2>Connections</h2>
+              <h2>Connected services</h2>
             </div>
           </div>
 
           <div className="connection-list">
             {providerPlugins.map((plugin) => {
+              const providerId = plugin.provider!.id;
               const connection = user.providerConnections.find(
-                (item) => item.providerId === plugin.provider!.id
+                (item) => item.providerId === providerId
               );
+              const active = isActive(connection);
+              const pending =
+                connection?.state === "provider-session" ||
+                connection?.state === "needs-verification";
 
               return (
-                <article className="connection-card" key={plugin.provider!.id}>
-                  <div className={`service-logo service-${plugin.provider!.id}`}>
+                <article
+                  className={`connection-card ${active ? "connection-active" : ""}`}
+                  key={providerId}
+                >
+                  <div className={`service-logo service-${providerId}`}>
                     {plugin.provider!.shortName}
                   </div>
+
                   <div className="connection-copy">
-                    <strong>{plugin.provider!.name}</strong>
-                    <span>
-                      {connection?.state === "provider-session"
-                        ? "Provider sign-in opened · account linking API still required"
-                        : "Not connected"}
-                    </span>
+                    <div className="connection-title-row">
+                      <strong>{plugin.provider!.name}</strong>
+                      {active && <span className="connection-active-pill">ACTIVE</span>}
+                    </div>
+                    <span>{connectionLabel(connection)}</span>
                   </div>
-                  <button
-                    className="button compact"
-                    onClick={() => void onProviderConnect(plugin.provider!.id)}
-                  >
-                    {connection ? "Open" : "Sign in"}
-                  </button>
+
+                  <div className="connection-actions">
+                    {!connection || connection.state === "not-connected" ? (
+                      <button
+                        className="button compact"
+                        onClick={() => void onProviderConnect(providerId)}
+                      >
+                        Sign in
+                      </button>
+                    ) : pending ? (
+                      <>
+                        <button
+                          className="button compact secondary"
+                          onClick={() => void onProviderConnect(providerId)}
+                        >
+                          Open sign-in
+                        </button>
+                        <button
+                          className="button compact primary"
+                          onClick={() => void onProviderConfirm(providerId)}
+                        >
+                          I’m signed in
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          className="button compact secondary"
+                          onClick={() => plugin.openSearch("")}
+                        >
+                          Open
+                        </button>
+                        <button
+                          className="text-button danger-text"
+                          onClick={() => void onProviderDeactivate(providerId)}
+                        >
+                          Mark signed out
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </article>
               );
             })}
           </div>
 
           <p className="provider-disclaimer">
-            Netflix, Disney+, and Max do not currently expose a public consumer OAuth/playback
-            API for this use case. These buttons therefore keep authentication on the provider's
-            site. The account model is ready to store approved tokens if/when a supported integration exists.
+            “Active” currently means you confirmed that the provider-owned browser session is
+            signed in. 3Dstreaming cannot inspect Netflix, Disney+, HBO Max, or Prime Video
+            cookies from this origin, so this status is a convenience record rather than an
+            independent entitlement check.
           </p>
         </div>
 
