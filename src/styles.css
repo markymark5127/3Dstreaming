@@ -28,3 +28,7 @@
 .provider-search-actions{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:-18px 0 34px;padding:13px 14px;border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.025)}
 .provider-search-actions>span{color:#78818c;font-size:.8rem;font-weight:700}.provider-search-actions>div{display:flex;flex-wrap:wrap;gap:7px}
 @media(max-width:620px){.provider-search-actions{align-items:flex-start;flex-direction:column}}
+
+.sidecar-diagnostics{display:flex;flex-wrap:wrap;gap:8px 14px;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.04);color:#7f8995;font-size:.74rem}.sidecar-diagnostics strong{color:#cfd4da;font-weight:700}
+.stereo-preview-overlay{position:fixed;inset:0;z-index:5000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;background:rgba(0,0,0,.92);backdrop-filter:blur(24px)}
+.stereo-preview-header{width:min(calc(100vw - 60px),1400px);display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:14px;color:#fff}.stereo-preview-header>span{color:#7f8995;font-size:.8rem}.stereo-preview-close{width:36px;height:36px;border:0;border-radius:50%;background:rgba(255,255,255,.1);color:#fff;font-size:1.35rem;cursor:pointer}.stereo-preview-canvas{display:block;max-width:calc(100vw - 60px);max-height:calc(100vh - 150px);border-radius:14px;box-shadow:0 20px 80px rgba(0,0,0,.7);background:#000}
