@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "mimeType": "video/webm",
+  "encoding": "base64-chunks",
+  "totalBytes": 1185147,
+  "sha256": "01c24400f24fae8105b739dd7c48f6a468b8ca2ed5a32d5513ca71560995a8bf",
+  "sourceOriginalBytes": 9823747,
+  "repositoryOptimized": true,
+  "video": {
+    "codec": "vp9",
+    "width": 320,
+    "height": 180,
+    "fps": 6,
+    "durationSeconds": 596.5
+  },
+  "chunks": [
+    "chunks/0000.b64",
+    "chunks/0001.b64",
+    "chunks/0002.b64",
+    "chunks/0003.b64",
+    "chunks/0004.b64",
+    "chunks/0005.b64",
+    "chunks/0006.b64",
+    "chunks/0007.b64",
+    "chunks/0008.b64",
+    "chunks/0009.b64",
+    "chunks/0010.b64",
+    "chunks/0011.b64",
+    "chunks/0012.b64",
+    "chunks/0013.b64",
+    "chunks/0014.b64",
+    "chunks/0015.b64",
+    "chunks/0016.b64",
+    "chunks/0017.b64",
+    "chunks/0018.b64",
+    "chunks/0019.b64",
+    "chunks/0020.b64",
+    "chunks/0021.b64",
+    "chunks/0022.b64",
+    "chunks/0023.b64",
+    "chunks/0024.b64"
+  ]
+}
