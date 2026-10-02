@@ -78,3 +78,10 @@ For WebXR on a headset, serve the app from HTTPS (or localhost during developmen
 5. Add contributor uploads, revisions, ratings, reports, and moderation.
 6. Add Plex/Jellyfin adapters.
 7. Prototype safe provider-specific timeline bridges without bypassing protected-media controls.
+
+
+## Quest protected media lab
+
+A separate native Meta Quest experiment lives in `quest-protected-media-lab/`. It uses Meta Spatial SDK + Media3/ExoPlayer to test Widevine direct-to-surface playback, fixed secure SBS eye routing, and synchronization of a 3Dstreaming sidecar without reading protected video pixels.
+
+The lab intentionally uses a public Widevine demo rather than commercial-provider streams. See `quest-protected-media-lab/README.md` for the device test matrix.
