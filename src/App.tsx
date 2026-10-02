@@ -99,7 +99,7 @@ export default function App() {
     );
   }, [profiles, searchQuery]);
 
-  const activeProviderPlugins = useMemo(() => {
+  const enabledProviderPlugins = useMemo(() => {
     if (!user) return [];
 
     return providerPlugins.filter((plugin) => {
@@ -107,16 +107,13 @@ export default function App() {
         (item) => item.providerId === plugin.provider?.id
       );
 
-      return (
-        connection?.state === "session-active" ||
-        connection?.state === "oauth-connected"
-      );
+      return Boolean(connection && connection.state !== "not-connected");
     });
   }, [user]);
 
-  const activeProviderIds = useMemo(
-    () => activeProviderPlugins.map((plugin) => plugin.provider!.id),
-    [activeProviderPlugins]
+  const enabledProviderIds = useMemo(
+    () => enabledProviderPlugins.map((plugin) => plugin.provider!.id),
+    [enabledProviderPlugins]
   );
 
   useEffect(() => {
@@ -275,24 +272,6 @@ export default function App() {
       return;
     }
 
-    const next = await accountService.updateProviderConnection({
-      providerId,
-      state:
-        result.value.state === "connected"
-          ? "oauth-connected"
-          : "provider-session",
-      connectedAt: new Date().toISOString(),
-      accountLabel: result.value.accountLabel
-    });
-
-    setUser(next);
-    setStatus(result.value.message);
-  }
-
-  async function confirmProvider(providerId: ProviderId) {
-    if (!user) return;
-
-    const now = new Date().toISOString();
     const existing = user.providerConnections.find(
       (item) => item.providerId === providerId
     );
@@ -300,17 +279,19 @@ export default function App() {
     const next = await accountService.updateProviderConnection({
       ...existing,
       providerId,
-      state: "session-active",
-      connectedAt: existing?.connectedAt ?? now,
-      sessionConfirmedAt: now,
-      lastVerifiedAt: now
+      state:
+        result.value.state === "connected"
+          ? "oauth-connected"
+          : "service-enabled",
+      verificationMethod:
+        result.value.state === "connected" ? "oauth" : "provider-owned",
+      connectedAt: existing?.connectedAt ?? new Date().toISOString(),
+      accountLabel: result.value.accountLabel
     });
 
     setUser(next);
-
-    const providerName = providerPluginRegistry.get(providerId).displayName;
     setStatus(
-      `${providerName} is now Active on your 3Dstreaming account. Search deeplinks will use this service.`
+      `${plugin.displayName} was added to My Services. Sign-in stays on ${plugin.displayName}; 3Dstreaming does not claim the provider session is verified.`
     );
   }
 
@@ -331,7 +312,7 @@ export default function App() {
 
     const providerName = providerPluginRegistry.get(providerId).displayName;
     setStatus(
-      `${providerName} is marked signed out in 3Dstreaming. The provider's own browser session is unchanged.`
+      `${providerName} was removed from My Services. The provider's own browser session is unchanged.`
     );
   }
 
@@ -350,19 +331,19 @@ export default function App() {
       return;
     }
 
-    if (activeProviderPlugins.length === 0) {
-      setStatus("Connect and confirm at least one streaming service first.");
+    if (enabledProviderPlugins.length === 0) {
+      setStatus("Add at least one streaming service to My Services first.");
       setSection("account");
       return;
     }
 
-    for (const plugin of activeProviderPlugins) {
+    for (const plugin of enabledProviderPlugins) {
       copyProviderQueryIfNeeded(plugin.provider!.id, trimmed);
       plugin.openSearch(trimmed);
     }
 
     setStatus(
-      `Opened ${activeProviderPlugins.length} connected service search${activeProviderPlugins.length === 1 ? "" : "es"} for “${trimmed}”. Your browser may ask to allow multiple tabs.`
+      `Opened ${enabledProviderPlugins.length} service search${enabledProviderPlugins.length === 1 ? "" : "es"} for “${trimmed}”. Your browser may ask to allow multiple tabs.`
     );
   }
 
@@ -418,7 +399,7 @@ export default function App() {
               key={item.id}
               item={item}
               profileCount={profileCount(item)}
-              activeProviderIds={activeProviderIds}
+              enabledProviderIds={enabledProviderIds}
               onOpen={setSelectedItem}
             />
           ))}
@@ -535,7 +516,7 @@ export default function App() {
                       key={item.id}
                       item={item}
                       profileCount={profileCount(item)}
-                      activeProviderIds={activeProviderIds}
+                      enabledProviderIds={enabledProviderIds}
                       onOpen={setSelectedItem}
                     />
                   ))}
@@ -558,12 +539,12 @@ export default function App() {
             </div>
           )}
 
-          {activeProviderPlugins.length > 0 && searchQuery.trim() && (
+          {enabledProviderPlugins.length > 0 && searchQuery.trim() && (
             <button
               className="button secondary connected-search-all"
               onClick={() => openAllConnectedSearches(searchQuery)}
             >
-              Also open this search on all active provider sites ↗
+              Also open this search on all My Services ↗
             </button>
           )}
         </section>
@@ -578,7 +559,7 @@ export default function App() {
               key={item.id}
               item={item}
               profileCount={profileCount(item)}
-              activeProviderIds={activeProviderIds}
+              enabledProviderIds={enabledProviderIds}
               onOpen={setSelectedItem}
             />
           ))}
@@ -746,7 +727,6 @@ export default function App() {
             onSignIn={signIn}
             onSignOut={signOut}
             onProviderConnect={connectProvider}
-            onProviderConfirm={confirmProvider}
             onProviderDeactivate={deactivateProvider}
             onUpload={() => user ? setShowUpload(true) : undefined}
           />
@@ -805,7 +785,7 @@ export default function App() {
                       )
                       .map((plugin) => {
                         const action = plugin.getSearchAction(selectedItem.title);
-                        const active = activeProviderIds.includes(plugin.provider!.id);
+                        const enabled = enabledProviderIds.includes(plugin.provider!.id);
 
                         return (
                           <a
@@ -813,7 +793,7 @@ export default function App() {
                             href={action.url}
                             target="_blank"
                             rel="noreferrer"
-                            className={`button compact ${active ? "primary" : "secondary"}`}
+                            className={`button compact ${enabled ? "primary" : "secondary"}`}
                             onClick={() =>
                               copyProviderQueryIfNeeded(
                                 plugin.provider!.id,
@@ -822,7 +802,7 @@ export default function App() {
                             }
                           >
                             {plugin.provider!.shortName} {plugin.displayName}
-                            {active ? " · Active" : ""} ↗
+                            {enabled ? " · My Service" : ""} ↗
                           </a>
                         );
                       })}
