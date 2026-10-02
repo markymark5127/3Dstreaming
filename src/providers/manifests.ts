@@ -9,7 +9,7 @@ export const providerManifests: StreamingProvider[] = [
     capabilities: ["provider-owned-auth", "provider-owned-playback"],
     integrationStatus: "browser-only",
     notes:
-      "Provider-owned browser authentication and playback. Public consumer catalog/timeline APIs are not available to this plugin."
+      "Provider-owned browser authentication and playback. No public consumer OAuth/account-linking API is configured for third-party PWAs."
   },
   {
     id: "disney-plus",
@@ -19,7 +19,7 @@ export const providerManifests: StreamingProvider[] = [
     capabilities: ["provider-owned-auth", "provider-owned-playback"],
     integrationStatus: "browser-only",
     notes:
-      "Provider-owned browser authentication and playback. No third-party consumer playback token is stored by 3Dstreaming."
+      "Provider-owned browser authentication and playback. 3Dstreaming does not receive MyDisney credentials or session cookies."
   },
   {
     id: "max",
@@ -36,10 +36,14 @@ export const providerManifests: StreamingProvider[] = [
     name: "Prime Video",
     shortName: "P",
     homeUrl: "https://www.primevideo.com/",
-    capabilities: ["provider-owned-auth", "provider-owned-playback"],
-    integrationStatus: "research",
+    capabilities: [
+      "provider-owned-auth",
+      "provider-owned-playback",
+      "oauth-account-link"
+    ],
+    integrationStatus: "official-api",
     notes:
-      "Amazon identity OAuth exists, while Prime Video API access is partner-oriented and does not provide general consumer playback to this app."
+      "Login with Amazon OAuth can verify Amazon identity/profile. Prime Video subscription entitlement and protected playback remain provider-owned."
   }
 ];
 
