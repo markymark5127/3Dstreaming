@@ -63,6 +63,7 @@ export interface StreamingProviderPlugin {
   disconnect(): Promise<PluginResult<void>>;
 
   search(query: string): Promise<PluginResult<PluginSearchResult[]>>;
+  getSearchAction(query: string): PluginExternalAction;
   openSearch(query: string): PluginResult<PluginExternalAction>;
 
   startPlayback(request: PluginPlaybackRequest): Promise<PluginResult<PluginPlaybackState>>;

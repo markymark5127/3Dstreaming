@@ -59,6 +59,13 @@ export class LocalMediaPlugin implements StreamingProviderPlugin {
     };
   }
 
+  getSearchAction(_query: string): PluginExternalAction {
+    return {
+      label: "Search Local Library",
+      url: window.location.href
+    };
+  }
+
   openSearch(_query: string): PluginResult<PluginExternalAction> {
     return {
       ok: false,

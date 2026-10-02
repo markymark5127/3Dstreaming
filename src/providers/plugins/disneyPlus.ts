@@ -4,5 +4,6 @@ import { providersById } from "../manifests";
 export const disneyPlusPlugin = new ExternalStreamingPlugin({
   provider: providersById["disney-plus"],
   authUrl: "https://www.disneyplus.com/login",
-  browseUrl: "https://www.disneyplus.com/"
+  browseUrl: "https://www.disneyplus.com/",
+  searchUrl: () => "https://www.disneyplus.com/search"
 });

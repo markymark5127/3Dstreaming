@@ -23,13 +23,13 @@ export const providerManifests: StreamingProvider[] = [
   },
   {
     id: "max",
-    name: "Max",
-    shortName: "M",
-    homeUrl: "https://www.max.com/",
+    name: "HBO Max",
+    shortName: "MAX",
+    homeUrl: "https://www.hbomax.com/",
     capabilities: ["provider-owned-auth", "provider-owned-playback"],
     integrationStatus: "browser-only",
     notes:
-      "Provider-owned browser authentication and playback. A future approved integration can add catalog/timeline capabilities."
+      "Provider-owned browser authentication and playback. The internal provider id remains 'max' for saved-account compatibility."
   },
   {
     id: "prime-video",

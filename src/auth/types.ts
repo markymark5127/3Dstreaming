@@ -3,6 +3,7 @@ import type { ProviderId } from "../providers/types";
 export type ProviderConnectionState =
   | "not-connected"
   | "provider-session"
+  | "session-active"
   | "oauth-connected"
   | "needs-verification";
 
@@ -11,6 +12,7 @@ export interface ProviderConnection {
   state: ProviderConnectionState;
   connectedAt?: string;
   lastVerifiedAt?: string;
+  sessionConfirmedAt?: string;
   accountLabel?: string;
   tokenReference?: string;
 }
