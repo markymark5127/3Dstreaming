@@ -15,11 +15,11 @@
   "tracks": [
     {
       "kind": "depth",
-      "url": "big-buck-bunny-720p-h264.depth.webm.chunks.json",
-      "codec": "vp9",
-      "fps": 6,
-      "width": 320,
-      "height": 180,
+      "url": "big-buck-bunny-720p-h264.depthpack.json",
+      "codec": "depthpack-4bit",
+      "fps": 0.1,
+      "width": 32,
+      "height": 18,
       "timeOffsetSeconds": 0
     }
   ],
@@ -28,5 +28,5 @@
     "convergence": 0.5,
     "popOutLimit": 0.18
   },
-  "notes": "Generated locally by 3Dstreaming using Depth Anything V2 Small (depth-anything-v2-small). The GitHub registry uses a repository-optimized VP9 copy stored as transparent base64 chunks while preserving 320x180 / 6 fps mapping geometry."
+  "notes": "Generated from the uploaded 320x180, 6 fps VP9 Depth Anything V2 Small mapping. GitHub playback uses a compact 32x18 keyframe depth pack sampled every 10 seconds with linear interpolation; the original full-quality sidecar should move to object storage/CDN for production."
 }
