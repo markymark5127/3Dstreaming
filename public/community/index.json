@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-02T19:55:00Z",
+  "generatedAt": "2026-10-02T20:22:34.356Z",
   "profiles": [
     {
       "id": "41654621-2451-4d9c-baf9-0062d8522b39",
@@ -25,15 +25,19 @@
         "depth",
         "depth-anything-v2",
         "720p",
-        "h264"
+        "h264",
+        "github-depthpack"
       ],
-      "updatedAt": "2026-10-02T19:55:00Z",
+      "updatedAt": "2026-10-02T20:22:34.356Z",
       "upload": {
         "profileFileName": "big-buck-bunny-720p-h264.3d.json",
         "sidecarFileNames": [
-          "big-buck-bunny-720p-h264.depth.webm"
+          "big-buck-bunny-720p-h264.depthpack.json"
         ],
-        "totalBytes": 1186100
+        "totalBytes": 12051,
+        "sourceOriginalBytes": 9823747,
+        "sourceMapping": "VP9 · 320x180 · 6 fps",
+        "repositoryPlayback": "depthpack · 32x18 · 10 sec keyframes"
       },
       "profileUrl": "maps/big-buck-bunny/720p-h264/big-buck-bunny-720p-h264.3d.json"
     }
