@@ -4,6 +4,7 @@ import type { MediaSource } from "./adapters/MediaAdapter";
 import { LocalAccountService } from "./auth/LocalAccountService";
 import type { UserAccount } from "./auth/types";
 import { catalog, searchCatalog } from "./catalog/catalog";
+import { searchUnifiedCatalog } from "./catalog/TmdbCatalogService";
 import type { CatalogItem } from "./catalog/types";
 import { AccountView } from "./components/AccountView";
 import { MediaCard } from "./components/MediaCard";
@@ -42,6 +43,10 @@ export default function App() {
   const [profiles, setProfiles] = useState<CommunityProfile[]>([]);
   const [myProfiles, setMyProfiles] = useState<CommunityProfile[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [streamingResults, setStreamingResults] = useState<CatalogItem[]>([]);
+  const [streamingSearchLoading, setStreamingSearchLoading] = useState(false);
+  const [streamingSearchConfigured, setStreamingSearchConfigured] = useState(true);
+  const [streamingSearchError, setStreamingSearchError] = useState("");
 
   const [source, setSource] = useState<MediaSource | null>(null);
   const [activeProfile, setActiveProfile] = useState<ThreeDProfile | null>(null);
@@ -108,6 +113,53 @@ export default function App() {
       );
     });
   }, [user]);
+
+  const activeProviderIds = useMemo(
+    () => activeProviderPlugins.map((plugin) => plugin.provider!.id),
+    [activeProviderPlugins]
+  );
+
+  useEffect(() => {
+    const query = searchQuery.trim();
+
+    if (section !== "search" || query.length < 2) {
+      setStreamingResults([]);
+      setStreamingSearchLoading(false);
+      setStreamingSearchError("");
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setStreamingSearchLoading(true);
+      setStreamingSearchError("");
+
+      void searchUnifiedCatalog(
+        query,
+        import.meta.env.VITE_STREAMING_REGION || "US",
+        controller.signal
+      )
+        .then((result) => {
+          if (controller.signal.aborted) return;
+          setStreamingSearchConfigured(result.configured);
+          setStreamingResults(result.items);
+        })
+        .catch((error) => {
+          if (controller.signal.aborted) return;
+          setStreamingSearchError(
+            error instanceof Error ? error.message : "Streaming catalog search failed."
+          );
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setStreamingSearchLoading(false);
+        });
+    }, 350);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [searchQuery, section]);
 
   const movieItems = catalog.filter((item) => item.kind === "movie");
   const showItems = catalog.filter((item) => item.kind === "series" || item.kind === "episode");
@@ -366,6 +418,7 @@ export default function App() {
               key={item.id}
               item={item}
               profileCount={profileCount(item)}
+              activeProviderIds={activeProviderIds}
               onOpen={setSelectedItem}
             />
           ))}
@@ -446,85 +499,77 @@ export default function App() {
         <section className="connected-search-panel">
           <div className="connected-search-heading">
             <div>
-              <span className="kicker">YOUR STREAMING SERVICES</span>
+              <span className="kicker">UNIFIED STREAMING SEARCH</span>
               <h2>
-                {activeProviderPlugins.length > 0
-                  ? `Search ${activeProviderPlugins.length} active service${activeProviderPlugins.length === 1 ? "" : "s"}`
-                  : "Connect services to search them"}
+                {searchQuery.trim().length < 2
+                  ? "Search once. See where it streams."
+                  : streamingSearchLoading
+                    ? `Searching “${searchQuery.trim()}”…`
+                    : `${streamingResults.length} streaming result${streamingResults.length === 1 ? "" : "s"}`}
               </h2>
             </div>
             <button className="text-button" onClick={() => setSection("account")}>
-              Manage
+              Manage services
             </button>
           </div>
 
-          {activeProviderPlugins.length > 0 ? (
-            <>
-              <div className="connected-search-actions">
-                {activeProviderPlugins.map((plugin) => {
-                  const action = plugin.getSearchAction(searchQuery);
-                  const needsPaste =
-                    plugin.provider!.id === "disney-plus" ||
-                    plugin.provider!.id === "max";
-
-                  return (
-                    <a
-                      key={plugin.id}
-                      className="provider-deeplink"
-                      href={action.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={() =>
-                        copyProviderQueryIfNeeded(
-                          plugin.provider!.id,
-                          searchQuery
-                        )
-                      }
-                    >
-                      <span className={`service-logo service-${plugin.provider!.id}`}>
-                        {plugin.provider!.shortName}
-                      </span>
-                      <span>
-                        <strong>{plugin.displayName}</strong>
-                        <small>
-                          {searchQuery.trim()
-                            ? needsPaste
-                              ? "Open Search · query copied"
-                              : `Search “${searchQuery.trim()}”`
-                            : "Browse service"}
-                        </small>
-                      </span>
-                      <span className="provider-active-dot">●</span>
-                    </a>
-                  );
-                })}
-              </div>
-
-              <button
-                className="button secondary connected-search-all"
-                disabled={!searchQuery.trim()}
-                onClick={() => openAllConnectedSearches(searchQuery)}
-              >
-                Search all active services ↗
-              </button>
-            </>
-          ) : (
-            <button
-              className="connect-services-empty"
-              onClick={() => setSection("account")}
-            >
-              <strong>{user ? "Connect Netflix, Disney+, HBO Max, or Prime Video" : "Sign in to 3Dstreaming first"}</strong>
+          {!streamingSearchConfigured ? (
+            <div className="catalog-config-note">
+              <strong>Unified catalog search needs a TMDB API token.</strong>
               <span>
-                {user
-                  ? "Confirm the services you’re already signed into, then they’ll appear here."
-                  : "Your active streaming-service list belongs to your 3Dstreaming account."}
+                Add VITE_TMDB_READ_ACCESS_TOKEN to .env.local. Provider availability is
+                supplied by JustWatch through TMDB.
               </span>
+            </div>
+          ) : streamingSearchError ? (
+            <div className="catalog-config-note error-note">
+              <strong>Couldn’t search the streaming catalog.</strong>
+              <span>{streamingSearchError}</span>
+            </div>
+          ) : searchQuery.trim().length >= 2 && !streamingSearchLoading ? (
+            streamingResults.length > 0 ? (
+              <>
+                <div className="media-grid streaming-results-grid">
+                  {streamingResults.map((item) => (
+                    <MediaCard
+                      key={item.id}
+                      item={item}
+                      profileCount={profileCount(item)}
+                      activeProviderIds={activeProviderIds}
+                      onOpen={setSelectedItem}
+                    />
+                  ))}
+                </div>
+                <p className="availability-attribution">
+                  Streaming availability powered by JustWatch via TMDB. Availability can vary by
+                  region, plan, and active provider profile.
+                </p>
+              </>
+            ) : (
+              <div className="catalog-config-note">
+                <strong>No supported streaming availability found.</strong>
+                <span>Try another title, spelling, or edition.</span>
+              </div>
+            )
+          ) : (
+            <div className="catalog-config-note">
+              <strong>Netflix · Disney+ · HBO Max · Prime Video</strong>
+              <span>Type at least two characters to search movies and shows across services.</span>
+            </div>
+          )}
+
+          {activeProviderPlugins.length > 0 && searchQuery.trim() && (
+            <button
+              className="button secondary connected-search-all"
+              onClick={() => openAllConnectedSearches(searchQuery)}
+            >
+              Also open this search on all active provider sites ↗
             </button>
           )}
         </section>
 
         <div className="shelf-heading">
-          <h2>Titles</h2>
+          <h2>3Dstreaming Library</h2>
           <span>{filteredCatalog.length} results</span>
         </div>
         <div className="media-grid">
@@ -533,6 +578,7 @@ export default function App() {
               key={item.id}
               item={item}
               profileCount={profileCount(item)}
+              activeProviderIds={activeProviderIds}
               onOpen={setSelectedItem}
             />
           ))}
@@ -726,6 +772,15 @@ export default function App() {
         <div className="detail-backdrop" onMouseDown={() => setSelectedItem(null)}>
           <article
             className={`media-detail ${selectedItem.artworkClass}`}
+            style={
+              selectedItem.backdropUrl
+                ? {
+                    backgroundImage: `url("${selectedItem.backdropUrl}")`,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center"
+                  }
+                : undefined
+            }
             onMouseDown={(event) => event.stopPropagation()}
           >
             <div className="detail-shade" />
@@ -740,32 +795,48 @@ export default function App() {
               </div>
               <p>{selectedItem.summary}</p>
 
-              {activeProviderPlugins.length > 0 && (
+              {(selectedItem.availableProviderIds?.length ?? 0) > 0 && (
                 <div className="detail-provider-links">
-                  <span>Find on your active services</span>
+                  <span>Stream on</span>
                   <div>
-                    {activeProviderPlugins.map((plugin) => {
-                      const action = plugin.getSearchAction(selectedItem.title);
+                    {providerPlugins
+                      .filter((plugin) =>
+                        selectedItem.availableProviderIds?.includes(plugin.provider!.id)
+                      )
+                      .map((plugin) => {
+                        const action = plugin.getSearchAction(selectedItem.title);
+                        const active = activeProviderIds.includes(plugin.provider!.id);
 
-                      return (
-                        <a
-                          key={plugin.id}
-                          href={action.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="button secondary compact"
-                          onClick={() =>
-                            copyProviderQueryIfNeeded(
-                              plugin.provider!.id,
-                              selectedItem.title
-                            )
-                          }
-                        >
-                          {plugin.provider!.shortName} {plugin.displayName} ↗
-                        </a>
-                      );
-                    })}
+                        return (
+                          <a
+                            key={plugin.id}
+                            href={action.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className={`button compact ${active ? "primary" : "secondary"}`}
+                            onClick={() =>
+                              copyProviderQueryIfNeeded(
+                                plugin.provider!.id,
+                                selectedItem.title
+                              )
+                            }
+                          >
+                            {plugin.provider!.shortName} {plugin.displayName}
+                            {active ? " · Active" : ""} ↗
+                          </a>
+                        );
+                      })}
                   </div>
+                  {selectedItem.availabilitySourceUrl && (
+                    <a
+                      className="availability-source-link"
+                      href={selectedItem.availabilitySourceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Check full availability ↗
+                    </a>
+                  )}
                 </div>
               )}
 
