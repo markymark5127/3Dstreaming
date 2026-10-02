@@ -1,5 +1,4 @@
 import { HeuristicDepthEstimator } from "./HeuristicDepthEstimator";
-import { TransformersDepthEstimator } from "./TransformersDepthEstimator";
 import type {
   DepthEstimator,
   MapperConfig,
@@ -74,8 +73,11 @@ function chooseRecorderMimeType(): string {
   return candidates.find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
 }
 
-function createEstimator(config: MapperConfig): DepthEstimator {
+async function createEstimator(config: MapperConfig): Promise<DepthEstimator> {
   if (config.engine === "depth-anything-v2-small") {
+    const { TransformersDepthEstimator } = await import(
+      "./TransformersDepthEstimator"
+    );
     return new TransformersDepthEstimator(config.temporalSmoothing);
   }
 
@@ -151,7 +153,7 @@ export class BrowserDepthMapper {
         throw new Error("This browser cannot record a WebM depth track.");
       }
 
-      const estimator = createEstimator(config);
+      const estimator = await createEstimator(config);
 
       if (estimator.prepare) {
         onProgress?.({
