@@ -4,6 +4,7 @@ import {
   downloadMapperResult
 } from "../mapper/BrowserDepthMapper";
 import type {
+  MapperEngineId,
   MapperProgress,
   MapperResult
 } from "../mapper/types";
@@ -20,6 +21,9 @@ export function MapperPanel({ onUseResult }: MapperPanelProps) {
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [edition, setEdition] = useState("local-source");
+  const [engine, setEngine] = useState<MapperEngineId>(
+    "gpu" in navigator ? "depth-anything-v2-small" : "browser-fast-v1"
+  );
   const [fps, setFps] = useState(6);
   const [resolution, setResolution] = useState("320x180");
   const [smoothing, setSmoothing] = useState(78);
@@ -52,7 +56,8 @@ export function MapperPanel({ onUseResult }: MapperPanelProps) {
           width,
           height,
           fps,
-          temporalSmoothing: smoothing / 100
+          temporalSmoothing: smoothing / 100,
+          engine
         },
         signal: controller.signal,
         onProgress: setProgress
@@ -135,6 +140,22 @@ export function MapperPanel({ onUseResult }: MapperPanelProps) {
             />
           </label>
 
+          <label>
+            <span>Mapper engine</span>
+            <select
+              value={engine}
+              disabled={running}
+              onChange={(event) => setEngine(event.target.value as MapperEngineId)}
+            >
+              <option value="depth-anything-v2-small">
+                Depth Anything V2 Small · AI / WebGPU
+              </option>
+              <option value="browser-fast-v1">
+                Fast Browser v1 · no model download
+              </option>
+            </select>
+          </label>
+
           <div className="mapper-setting-row">
             <label>
               <span>Depth FPS</span>
@@ -187,9 +208,11 @@ export function MapperPanel({ onUseResult }: MapperPanelProps) {
             <span>
               {progress?.phase === "loading"
                 ? "Loading source…"
-                : progress?.phase === "finalizing"
-                  ? "Finalizing depth.webm…"
-                  : "Mapping video in real time…"}
+                : progress?.phase === "loading-model"
+                  ? "Loading Depth Anything model…"
+                  : progress?.phase === "finalizing"
+                    ? "Finalizing depth.webm…"
+                    : "Mapping video in real time…"}
             </span>
             <strong>{percent}%</strong>
           </div>
@@ -243,9 +266,9 @@ export function MapperPanel({ onUseResult }: MapperPanelProps) {
       {!running && !result && (
         <div className="mapper-footer">
           <p>
-            This v1 mapper is intended to prove the complete file workflow. It uses fast
-            visual-depth heuristics; a semantic AI depth engine will plug into the same
-            exporter next.
+            Depth Anything V2 runs locally in-browser and is the recommended quality mode.
+            The fast engine stays available as a no-model fallback. Mapping currently runs
+            in real time so the recorded depth track stays synchronized to the source.
           </p>
           <button
             className="button light"
