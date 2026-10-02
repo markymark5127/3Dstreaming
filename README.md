@@ -109,3 +109,24 @@ With that configured, 3Dstreaming searches movies and TV shows inside the app, s
 Provider availability is supplied by JustWatch through TMDB and must retain JustWatch attribution. TMDB also requires its own product attribution for applications using its API.
 
 Streaming-provider sign-in remains provider-owned. The PWA does not claim that a provider session is verified unless a future approved OAuth integration or companion bridge can actually prove it. The account's **My Services** list is therefore a user preference list, not a stored provider credential or entitlement.
+
+
+## Provider verification, direct links, and search scope
+
+The streaming account model distinguishes **My Services** from **Verified** provider identity.
+
+- Netflix, Disney+, and HBO Max keep sign-in entirely provider-owned. The PWA does not have a public consumer OAuth flow for those services.
+- Prime Video can use **Login with Amazon** OAuth to verify the user's Amazon identity/profile when `VITE_AMAZON_LWA_CLIENT_ID` is configured. This does **not** prove Prime Video subscription entitlement; Prime Video still performs that check when playback opens.
+- Exact title links can be resolved with Watchmode using `VITE_WATCHMODE_API_KEY`. Watchmode returns provider-specific `web_url` and app deeplinks for exact titles. In a production deployment this key should be proxied by the backend instead of exposed by a static PWA.
+- Unified search defaults to titles available on services in **My Services**. The Account screen has a persisted **Show titles from other services** setting to broaden discovery.
+
+Example environment:
+
+```bash
+VITE_TMDB_READ_ACCESS_TOKEN=...
+VITE_WATCHMODE_API_KEY=...
+VITE_AMAZON_LWA_CLIENT_ID=...
+VITE_STREAMING_REGION=US
+```
+
+For Login with Amazon, register the HTTPS origin used by 3Dstreaming as an Allowed JavaScript Origin in the Amazon developer security profile.
