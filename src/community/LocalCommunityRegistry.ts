@@ -33,7 +33,7 @@ const seedProfiles: CommunityProfile[] = [
       tracks: [
         {
           kind: "depth",
-          url: "/community/demo/big-buck-bunny-depth.webm",
+          url: "procedural://depth",
           codec: "vp9",
           fps: 12,
           width: 320,
@@ -76,7 +76,7 @@ const seedProfiles: CommunityProfile[] = [
       tracks: [
         {
           kind: "disparity-left",
-          url: "/community/demo/sintel-left.webm",
+          url: "procedural://left",
           codec: "vp9",
           fps: 12,
           width: 320,
@@ -84,7 +84,7 @@ const seedProfiles: CommunityProfile[] = [
         },
         {
           kind: "disparity-right",
-          url: "/community/demo/sintel-right.webm",
+          url: "procedural://right",
           codec: "vp9",
           fps: 12,
           width: 320,

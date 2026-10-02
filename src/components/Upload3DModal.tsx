@@ -56,6 +56,28 @@ export function Upload3DModal({ user, onClose, onSubmit }: Upload3DModalProps) {
       setSubmitting(true);
       const parsed = await loadThreeDProfile(profileFile);
 
+      const resolvedTracks = parsed.tracks.map((track, index) => {
+        const referencedName = track.url.split("/").pop()?.toLowerCase();
+        const kindHint =
+          track.kind === "disparity-left"
+            ? "left"
+            : track.kind === "disparity-right"
+              ? "right"
+              : track.kind === "convergence"
+                ? "conv"
+                : "depth";
+
+        const matchingFile =
+          sidecarFiles.find((file) => file.name.toLowerCase() === referencedName) ??
+          sidecarFiles.find((file) => file.name.toLowerCase().includes(kindHint)) ??
+          (sidecarFiles.length === parsed.tracks.length ? sidecarFiles[index] : undefined) ??
+          (sidecarFiles.length === 1 && parsed.tracks.length === 1 ? sidecarFiles[0] : undefined);
+
+        return matchingFile
+          ? { ...track, url: URL.createObjectURL(matchingFile) }
+          : track;
+      });
+
       const communityProfile: CommunityProfile = {
         id: crypto.randomUUID(),
         title: title.trim(),
@@ -84,7 +106,8 @@ export function Upload3DModal({ user, onClose, onSubmit }: Upload3DModalProps) {
         profile: {
           ...parsed,
           title: title.trim(),
-          editionId: edition.trim()
+          editionId: edition.trim(),
+          tracks: resolvedTracks
         }
       };
 

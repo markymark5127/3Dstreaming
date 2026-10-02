@@ -1,10 +1,18 @@
 import * as THREE from "three";
+import {
+  createStereoPlayback,
+  type StereoPlaybackOptions
+} from "./StereoPlayback";
 
 export interface XRTheaterHandle {
   end(): Promise<void>;
+  setControls(strength: number, convergence: number, popOutLimit: number): void;
 }
 
-export async function startWebXRTheater(video: HTMLVideoElement): Promise<XRTheaterHandle> {
+export async function startWebXRTheater(
+  video: HTMLVideoElement,
+  options: StereoPlaybackOptions
+): Promise<XRTheaterHandle> {
   if (!navigator.xr) {
     throw new Error("WebXR is not available in this browser.");
   }
@@ -25,49 +33,32 @@ export async function startWebXRTheater(video: HTMLVideoElement): Promise<XRThea
   renderer.domElement.className = "xr-canvas";
   document.body.appendChild(renderer.domElement);
 
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x050608);
+  const resources = createStereoPlayback(video, options);
 
-  const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 100);
+  const camera = new THREE.PerspectiveCamera(
+    70,
+    window.innerWidth / window.innerHeight,
+    0.01,
+    100
+  );
   camera.position.set(0, 1.6, 0);
 
-  const texture = new THREE.VideoTexture(video);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.minFilter = THREE.LinearFilter;
-  texture.magFilter = THREE.LinearFilter;
-
-  const aspect = video.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : 16 / 9;
-  const width = 3.4;
-  const height = width / aspect;
-
-  const screen = new THREE.Mesh(
-    new THREE.PlaneGeometry(width, height),
-    new THREE.MeshBasicMaterial({ map: texture, toneMapped: false })
-  );
-  screen.position.set(0, 1.6, -3);
-  scene.add(screen);
-
-  const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(20, 20),
-    new THREE.MeshBasicMaterial({ color: 0x11151c })
-  );
-  floor.rotation.x = -Math.PI / 2;
-  floor.position.y = 0;
-  scene.add(floor);
-
   await renderer.xr.setSession(session);
-  renderer.setAnimationLoop(() => renderer.render(scene, camera));
 
+  let cleanedUp = false;
   const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
     renderer.setAnimationLoop(null);
-    texture.dispose();
-    screen.geometry.dispose();
-    (screen.material as THREE.Material).dispose();
-    floor.geometry.dispose();
-    (floor.material as THREE.Material).dispose();
+    resources.dispose();
     renderer.dispose();
     renderer.domElement.remove();
   };
+
+  renderer.setAnimationLoop(() => {
+    resources.update();
+    renderer.render(resources.scene, camera);
+  });
 
   session.addEventListener("end", cleanup, { once: true });
 
@@ -75,7 +66,12 @@ export async function startWebXRTheater(video: HTMLVideoElement): Promise<XRThea
     async end() {
       if (session.visibilityState !== "hidden") {
         await session.end();
+      } else {
+        cleanup();
       }
+    },
+    setControls(strength, convergence, popOutLimit) {
+      resources.setControls(strength, convergence, popOutLimit);
     }
   };
 }

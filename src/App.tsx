@@ -7,6 +7,7 @@ import { catalog, searchCatalog } from "./catalog/catalog";
 import type { CatalogItem } from "./catalog/types";
 import { AccountView } from "./components/AccountView";
 import { MediaCard } from "./components/MediaCard";
+import { MapperPanel } from "./components/MapperPanel";
 import { ProfileShelf } from "./components/ProfileShelf";
 import { Sidebar, type AppSection } from "./components/Sidebar";
 import { Upload3DModal } from "./components/Upload3DModal";
@@ -16,9 +17,12 @@ import { loadThreeDProfile } from "./core/sidecar";
 import { localMediaPlugin } from "./providers/LocalMediaPlugin";
 import { providerPlugins } from "./providers/providers";
 import { providerPluginRegistry } from "./providers/registry";
+import type { MapperResult } from "./mapper/types";
 import type { ProviderId } from "./providers/types";
 import type { ThreeDProfile } from "./types/threeDProfile";
+import type { SidecarRuntimeState } from "./sidecar/runtime";
 import { detectCapabilities, type ClientCapabilities } from "./xr/capabilities";
+import { startStereoPreview, type StereoPreviewHandle } from "./xr/StereoPreview";
 import { startWebXRTheater, type XRTheaterHandle } from "./xr/WebXRTheater";
 
 const localAdapter = new LocalFileAdapter();
@@ -28,6 +32,7 @@ const accountService = new LocalAccountService();
 export default function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const xrHandle = useRef<XRTheaterHandle | null>(null);
+  const previewHandle = useRef<StereoPreviewHandle | null>(null);
 
   const [section, setSection] = useState<AppSection>("home");
   const [user, setUser] = useState<UserAccount | null>(null);
@@ -44,12 +49,14 @@ export default function App() {
   const [status, setStatus] = useState("Choose a local video and community profile to test playback.");
   const [depthStrength, setDepthStrength] = useState(60);
   const [convergence, setConvergence] = useState(50);
+  const [sidecarState, setSidecarState] = useState<SidecarRuntimeState | null>(null);
 
   useEffect(() => {
     void bootstrap();
 
     return () => {
       localAdapter.dispose();
+      previewHandle.current?.end();
       void xrHandle.current?.end();
     };
   }, []);
@@ -137,13 +144,42 @@ export default function App() {
     }
   }
 
+  function stereoOptions() {
+    return {
+      profile: activeProfile,
+      strength: depthStrength / 100,
+      convergence: convergence / 100,
+      popOutLimit: activeProfile?.defaults?.popOutLimit ?? 0.18,
+      onSidecarState: setSidecarState
+    };
+  }
+
+  function previewSbs(mode: "window" | "cardboard" = "window") {
+    if (!videoRef.current) return;
+
+    previewHandle.current?.end();
+    previewHandle.current = startStereoPreview(
+      videoRef.current,
+      stereoOptions(),
+      mode
+    );
+
+    setStatus(
+      mode === "cardboard"
+        ? "Cardboard mode running full-screen SBS for phone viewers."
+        : "SBS preview running. Left and right halves use opposite stereo warps."
+    );
+  }
+
   async function enterVr() {
     if (!videoRef.current) return;
 
     try {
+      previewHandle.current?.end();
+      previewHandle.current = null;
       await videoRef.current.play();
-      xrHandle.current = await startWebXRTheater(videoRef.current);
-      setStatus("WebXR theater running.");
+      xrHandle.current = await startWebXRTheater(videoRef.current, stereoOptions());
+      setStatus("WebXR stereo theater running.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not enter VR.");
     }
@@ -189,6 +225,35 @@ export default function App() {
   function bindVideoElement(element: HTMLVideoElement | null) {
     videoRef.current = element;
     localMediaPlugin.bindMediaElement(element);
+  }
+
+  useEffect(() => {
+    const strength = depthStrength / 100;
+    const conv = convergence / 100;
+    const popOut = activeProfile?.defaults?.popOutLimit ?? 0.18;
+
+    previewHandle.current?.setControls(strength, conv, popOut);
+    xrHandle.current?.setControls(strength, conv, popOut);
+  }, [depthStrength, convergence, activeProfile]);
+
+  async function useMapperResult(result: MapperResult, sourceFile: File) {
+    const nextSource = await localAdapter.open(sourceFile);
+    setSource(nextSource);
+    setActiveProfile(result.runtimeProfile);
+    setDepthStrength(
+      Math.round((result.runtimeProfile.defaults?.depthStrength ?? 0.58) * 100)
+    );
+    setConvergence(
+      Math.round((result.runtimeProfile.defaults?.convergence ?? 0.5) * 100)
+    );
+    setSidecarState(null);
+    setStatus(
+      `Generated and loaded ${result.depthFileName}. You can preview it immediately in SBS or Cardboard mode.`
+    );
+
+    requestAnimationFrame(() => {
+      videoRef.current?.load();
+    });
   }
 
   async function publishProfile(profile: CommunityProfile) {
@@ -424,6 +489,20 @@ export default function App() {
               </label>
               <button
                 className="button secondary"
+                disabled={!source}
+                onClick={() => previewSbs("window")}
+              >
+                Preview SBS
+              </button>
+              <button
+                className="button secondary"
+                disabled={!source}
+                onClick={() => previewSbs("cardboard")}
+              >
+                Cardboard
+              </button>
+              <button
+                className="button secondary"
                 disabled={!source || !capabilities?.immersiveVr}
                 onClick={() => void enterVr()}
               >
@@ -431,9 +510,18 @@ export default function App() {
               </button>
             </div>
 
+            {sidecarState && (
+              <div className="sidecar-diagnostics">
+                <span><strong>Sidecar</strong> {sidecarState.mode}</span>
+                <span><strong>Drift</strong> {(sidecarState.drift * 1000).toFixed(1)} ms</span>
+                <span><strong>Resyncs</strong> {sidecarState.resyncs}</span>
+              </div>
+            )}
             <p className="studio-status">{status}</p>
           </div>
         </section>
+
+        <MapperPanel onUseResult={useMapperResult} />
       </section>
     );
   }
