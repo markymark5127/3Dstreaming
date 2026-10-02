@@ -10,7 +10,6 @@ const seedProfiles: CommunityProfile[] = [
     title: "Big Buck Bunny",
     year: 2008,
     mediaType: "movie",
-    mediaType: "movie",
     editionLabel: "Open movie demo / 24 fps",
     providerHints: ["local", "http"],
     author: { id: "3dstreaming-team", displayName: "3Dstreaming Team" },
@@ -53,6 +52,7 @@ const seedProfiles: CommunityProfile[] = [
     id: "demo-sintel",
     title: "Sintel",
     year: 2010,
+    mediaType: "movie",
     editionLabel: "Open movie demo / 24 fps",
     providerHints: ["local", "http"],
     author: { id: "3dstreaming-team", displayName: "3Dstreaming Team" },
@@ -110,7 +110,7 @@ export class LocalCommunityRegistry implements CommunityRegistry {
     const authorId = query.authorId;
 
     return this.profiles
-      .filter((item) => item.status === "published")
+      .filter((item) => item.status === "published" || (authorId && item.author.id === authorId))
       .filter((item) => {
         if (!q) return true;
         return [
