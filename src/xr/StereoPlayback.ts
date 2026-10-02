@@ -9,6 +9,7 @@ export interface StereoPlaybackOptions {
   convergence: number;
   popOutLimit: number;
   onSidecarState?: (state: SidecarRuntimeState) => void;
+  autoEyeFromCamera?: boolean;
 }
 
 export interface StereoPlaybackResources {
@@ -57,9 +58,11 @@ export function createStereoPlayback(
 
   const screen = new THREE.Mesh(new THREE.PlaneGeometry(width, height), material);
   screen.position.set(0, 1.6, -3);
-  screen.onBeforeRender = (_renderer, _scene, camera) => {
-    material.setEyeForCamera(camera);
-  };
+  if (options.autoEyeFromCamera !== false) {
+    screen.onBeforeRender = (_renderer, _scene, camera) => {
+      material.setEyeForCamera(camera);
+    };
+  }
   scene.add(screen);
 
   const floorMaterial = new THREE.MeshBasicMaterial({ color: 0x11151c });
