@@ -6,6 +6,7 @@ import type { ProviderId } from "../providers/types";
 interface AccountViewProps {
   user: UserAccount | null;
   amazonOAuthConfigured: boolean;
+  providerBridgeConfigured: boolean;
   onSignIn(email: string, displayName: string): Promise<void>;
   onSignOut(): Promise<void>;
   onProviderConnect(providerId: ProviderId): Promise<void>;
@@ -56,6 +57,7 @@ function connectionLabel(
 export function AccountView({
   user,
   amazonOAuthConfigured,
+  providerBridgeConfigured,
   onSignIn,
   onSignOut,
   onProviderConnect,
@@ -199,9 +201,18 @@ export function AccountView({
                         )}
 
                         {!amazonProvider && (
-                          <span className="provider-verification-note">
-                            Official consumer OAuth unavailable
-                          </span>
+                          providerBridgeConfigured ? (
+                            <button
+                              className="button compact secondary"
+                              onClick={() => void onProviderVerify(providerId)}
+                            >
+                              Check confirmation
+                            </button>
+                          ) : (
+                            <span className="provider-verification-note">
+                              Install companion bridge to confirm
+                            </span>
+                          )
                         )}
 
                         <button
