@@ -85,3 +85,27 @@ For WebXR on a headset, serve the app from HTTPS (or localhost during developmen
 A separate native Meta Quest experiment lives in `quest-protected-media-lab/`. It uses Meta Spatial SDK + Media3/ExoPlayer to test Widevine direct-to-surface playback, fixed secure SBS eye routing, and synchronization of a 3Dstreaming sidecar without reading protected video pixels.
 
 The lab intentionally uses a public Widevine demo rather than commercial-provider streams. See `quest-protected-media-lab/README.md` for the device test matrix.
+
+
+## Unified streaming search
+
+The Search screen can query a real cross-service catalog using TMDB search plus TMDB's JustWatch-powered watch-provider availability data.
+
+Configure a TMDB API Read Access Token in a local environment file:
+
+```bash
+cp .env.example .env.local
+```
+
+Then set:
+
+```bash
+VITE_TMDB_READ_ACCESS_TOKEN=your_tmdb_read_access_token
+VITE_STREAMING_REGION=US
+```
+
+With that configured, 3Dstreaming searches movies and TV shows inside the app, shows which supported services currently carry each title in the selected region, and offers provider-owned deeplinks for Netflix, Disney+, HBO Max, and Prime Video.
+
+Provider availability is supplied by JustWatch through TMDB and must retain JustWatch attribution. TMDB also requires its own product attribution for applications using its API.
+
+Streaming-provider sign-in remains provider-owned. The PWA does not claim that a provider session is verified unless a future approved OAuth integration or companion bridge can actually prove it. The account's **My Services** list is therefore a user preference list, not a stored provider credential or entitlement.

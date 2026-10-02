@@ -2,14 +2,23 @@ import type { ProviderId } from "../providers/types";
 
 export type ProviderConnectionState =
   | "not-connected"
+  | "service-enabled"
   | "provider-session"
   | "session-active"
   | "oauth-connected"
+  | "bridge-verified"
   | "needs-verification";
+
+export type ProviderVerificationMethod =
+  | "none"
+  | "provider-owned"
+  | "oauth"
+  | "bridge";
 
 export interface ProviderConnection {
   providerId: ProviderId;
   state: ProviderConnectionState;
+  verificationMethod?: ProviderVerificationMethod;
   connectedAt?: string;
   lastVerifiedAt?: string;
   sessionConfirmedAt?: string;
