@@ -1,4 +1,4 @@
-import { catalog, searchCatalog } from "../catalog/catalog";
+import { searchCatalog } from "../catalog/catalog";
 import type {
   PluginConnectionResult,
   PluginExternalAction,
@@ -70,13 +70,7 @@ export class LocalMediaPlugin implements StreamingProviderPlugin {
   async startPlayback(request: PluginPlaybackRequest): Promise<PluginResult<PluginPlaybackState>> {
     this.contentId = request.contentId;
 
-    if (!this.media) {
-      return {
-        ok: false,
-        code: "media-not-bound",
-        message: "Choose a local video file before starting playback."
-      };
-    }
+    if (!this.media) return this.missingMedia();
 
     await this.media.play();
     return { ok: true, value: stateFor(this.media, this.contentId) };
@@ -109,7 +103,10 @@ export class LocalMediaPlugin implements StreamingProviderPlugin {
     }
 
     return this.withMedia((media) => {
-      media.currentTime = Math.min(seconds, Number.isFinite(media.duration) ? media.duration : seconds);
+      media.currentTime = Math.min(
+        seconds,
+        Number.isFinite(media.duration) ? media.duration : seconds
+      );
       return stateFor(media, this.contentId);
     });
   }
@@ -131,5 +128,3 @@ export class LocalMediaPlugin implements StreamingProviderPlugin {
 }
 
 export const localMediaPlugin = new LocalMediaPlugin();
-
-void catalog;
