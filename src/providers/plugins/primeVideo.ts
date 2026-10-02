@@ -1,5 +1,5 @@
 import { ExternalStreamingPlugin } from "../ExternalStreamingPlugin";
-import { providersById } from "../providers";
+import { providersById } from "../manifests";
 
 export const primeVideoPlugin = new ExternalStreamingPlugin({
   provider: providersById["prime-video"],
