@@ -15,7 +15,7 @@
   "tracks": [
     {
       "kind": "depth",
-      "url": "big-buck-bunny-720p-h264.depth.webm",
+      "url": "big-buck-bunny-720p-h264.depth.webm.chunks.json",
       "codec": "vp9",
       "fps": 6,
       "width": 320,
@@ -28,5 +28,5 @@
     "convergence": 0.5,
     "popOutLimit": 0.18
   },
-  "notes": "Generated locally by 3Dstreaming using Depth Anything V2 Small (depth-anything-v2-small). Repository copy preserves 320x180 / 6 fps mapping geometry."
+  "notes": "Generated locally by 3Dstreaming using Depth Anything V2 Small (depth-anything-v2-small). The GitHub registry uses a repository-optimized VP9 copy stored as transparent base64 chunks while preserving 320x180 / 6 fps mapping geometry."
 }
