@@ -6,7 +6,11 @@ import { LocalAccountService } from "./auth/LocalAccountService";
 import { providerSessionBridge } from "./auth/ProviderSessionBridge";
 import type { UserAccount } from "./auth/types";
 import { catalog, searchCatalog } from "./catalog/catalog";
-import { searchUnifiedCatalog } from "./catalog/TmdbCatalogService";
+import {
+  getStreamingHomeRows,
+  searchUnifiedCatalog,
+  type StreamingHomeRow
+} from "./catalog/TmdbCatalogService";
 import type { CatalogItem } from "./catalog/types";
 import {
   isWatchmodeConfigured,
@@ -54,6 +58,9 @@ export default function App() {
   const [streamingSearchConfigured, setStreamingSearchConfigured] = useState(true);
   const [streamingSearchError, setStreamingSearchError] = useState("");
   const [providerLinksLoading, setProviderLinksLoading] = useState(false);
+  const [homeRows, setHomeRows] = useState<StreamingHomeRow[]>([]);
+  const [homeLoading, setHomeLoading] = useState(false);
+  const [homeCatalogConfigured, setHomeCatalogConfigured] = useState(true);
 
   const [source, setSource] = useState<MediaSource | null>(null);
   const [activeProfile, setActiveProfile] = useState<ThreeDProfile | null>(null);
@@ -126,6 +133,40 @@ export default function App() {
   const includeOtherServices =
     user?.preferences.includeOtherStreamingServices ?? false;
 
+  useEffect(() => {
+    if (!user || enabledProviderIds.length === 0) {
+      setHomeRows([]);
+      setHomeLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setHomeLoading(true);
+
+    void getStreamingHomeRows(
+      enabledProviderIds,
+      import.meta.env.VITE_STREAMING_REGION || "US",
+      controller.signal
+    )
+      .then((result) => {
+        if (controller.signal.aborted) return;
+
+        setHomeCatalogConfigured(result.configured);
+        setHomeRows(result.rows);
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        console.error("Could not populate streaming home.", error);
+        setHomeRows([]);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setHomeLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [user, enabledProviderIds]);
+
+
   const visibleStreamingResults = useMemo(() => {
     const withSupportedProviders = streamingResults.filter(
       (item) => (item.availableProviderIds?.length ?? 0) > 0
@@ -187,8 +228,14 @@ export default function App() {
   }, [searchQuery, section]);
 
   const movieItems = catalog.filter((item) => item.kind === "movie");
-  const showItems = catalog.filter((item) => item.kind === "series" || item.kind === "episode");
-  const featured = catalog.find((item) => item.featured) ?? catalog[0];
+  const showItems = catalog.filter(
+    (item) => item.kind === "series" || item.kind === "episode"
+  );
+  const streamingHomeItems = homeRows.flatMap((row) => row.items);
+  const featured =
+    streamingHomeItems[0] ??
+    catalog.find((item) => item.featured) ??
+    catalog[0];
 
   function profileCount(item: CatalogItem) {
     return profiles.filter((profile) =>
@@ -583,25 +630,55 @@ export default function App() {
   }
 
   function homeView() {
+    const featuredProfiles = profileCount(featured);
+    const streamingFeatured = featured.externalSource === "tmdb";
+
     return (
       <>
-        <section className={`feature-hero ${featured.artworkClass}`}>
+        <section
+          className={`feature-hero ${featured.artworkClass}`}
+          style={
+            featured.backdropUrl
+              ? {
+                  backgroundImage: `url("${featured.backdropUrl}")`,
+                  backgroundSize: "cover",
+                  backgroundPosition: "center"
+                }
+              : undefined
+          }
+        >
           <div className="feature-vignette" />
           <div className="feature-content">
-            <span className="kicker">FEATURED COMMUNITY 3D</span>
+            <span className="kicker">
+              {streamingFeatured
+                ? "POPULAR ON YOUR SERVICES"
+                : "PUBLISHED COMMUNITY 3D"}
+            </span>
             <h1>{featured.title}</h1>
             <div className="feature-meta">
-              <span>{featured.year}</span>
-              <span>{featured.runtimeLabel}</span>
-              <span className="three-d-pill">{profileCount(featured)} 3D profile</span>
+              {featured.year && <span>{featured.year}</span>}
+              {featured.runtimeLabel && <span>{featured.runtimeLabel}</span>}
+              {featuredProfiles > 0 && (
+                <span className="three-d-pill">
+                  {featuredProfiles} community 3D map
+                </span>
+              )}
             </div>
             <p>{featured.summary}</p>
             <div className="feature-actions">
-              <button className="button light" onClick={() => void openCatalogItem(featured)}>
-                ▶ View 3D options
+              <button
+                className="button light"
+                onClick={() => void openCatalogItem(featured)}
+              >
+                {streamingFeatured ? "▶ View title" : "▶ View 3D map"}
               </button>
-              <button className="button glass" onClick={() => setSection("my-3d")}>
-                Open local source
+              <button
+                className="button glass"
+                onClick={() =>
+                  streamingFeatured ? setSection("search") : setSection("my-3d")
+                }
+              >
+                {streamingFeatured ? "Search library" : "Open local source"}
               </button>
             </div>
           </div>
@@ -609,27 +686,102 @@ export default function App() {
 
         <section className="shelf-section first-shelf">
           <div className="shelf-heading">
-            <h2>Popular Community 3D</h2>
-            <button className="text-button" onClick={() => setSection("search")}>Browse Library</button>
+            <div>
+              <span className="kicker">COMMUNITY LAYER</span>
+              <h2>Community 3D Maps</h2>
+            </div>
+            <button
+              className="text-button"
+              onClick={() => setSection("search")}
+            >
+              Browse maps
+            </button>
           </div>
           <ProfileShelf profiles={profiles} onUse={useCommunityProfile} />
         </section>
 
-        {renderShelf("Movies", movieItems)}
-        {renderShelf("TV & Episodes", showItems)}
+        {homeLoading && (
+          <section className="shelf-section">
+            <div className="shelf-heading">
+              <h2>Loading your streaming services…</h2>
+            </div>
+            <div className="home-loading-row">
+              <span />
+              <span />
+              <span />
+              <span />
+            </div>
+          </section>
+        )}
+
+        {!homeLoading &&
+          homeRows.map((row) =>
+            renderShelf(`Popular on ${row.providerName}`, row.items)
+          )}
+
+        {!homeLoading &&
+          user &&
+          enabledProviderIds.length > 0 &&
+          homeRows.length === 0 && (
+            <section className="home-feed-empty">
+              <strong>
+                {homeCatalogConfigured
+                  ? "No streaming rows could be loaded."
+                  : "Connect the live catalog to populate Home."}
+              </strong>
+              <span>
+                {homeCatalogConfigured
+                  ? "Your Community 3D Maps are still available above."
+                  : "Add VITE_TMDB_READ_ACCESS_TOKEN to populate popular titles from My Services."}
+              </span>
+            </section>
+          )}
+
+        {!user || enabledProviderIds.length === 0 ? (
+          <button
+            className="home-connect-services"
+            onClick={() => setSection("account")}
+          >
+            <span className="kicker">PERSONALIZE HOME</span>
+            <strong>Add your streaming services</strong>
+            <span>
+              Home will populate with popular titles from My Services while
+              Community 3D Maps remain the shared layer on top.
+            </span>
+          </button>
+        ) : null}
 
         <section className="service-strip">
           <div>
-            <span className="kicker">YOUR SOURCES</span>
-            <h2>One 3D library. Your existing services.</h2>
+            <span className="kicker">HOW 3DSTREAMING WORKS</span>
+            <h2>Provider playback underneath. Community 3D map on top.</h2>
           </div>
           <div className="mini-service-logos">
-            <span className="service-logo service-netflix">N</span>
-            <span className="service-logo service-disney-plus">D+</span>
-            <span className="service-logo service-max">M</span>
-            <span className="service-logo service-prime-video">P</span>
+            {enabledProviderPlugins.length > 0
+              ? enabledProviderPlugins.map((plugin) => (
+                  <span
+                    key={plugin.id}
+                    className={`service-logo service-${plugin.provider!.id}`}
+                    title={plugin.displayName}
+                  >
+                    {plugin.provider!.shortName}
+                  </span>
+                ))
+              : (
+                <>
+                  <span className="service-logo service-netflix">N</span>
+                  <span className="service-logo service-disney-plus">D+</span>
+                  <span className="service-logo service-max">MAX</span>
+                  <span className="service-logo service-prime-video">P</span>
+                </>
+              )}
           </div>
-          <button className="button glass" onClick={() => setSection("account")}>Manage Services</button>
+          <button
+            className="button glass"
+            onClick={() => setSection("account")}
+          >
+            Manage Services
+          </button>
         </section>
       </>
     );
