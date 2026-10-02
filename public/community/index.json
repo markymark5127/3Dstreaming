@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-02T19:55:00Z",
+  "profiles": [
+    {
+      "id": "41654621-2451-4d9c-baf9-0062d8522b39",
+      "title": "Big Buck Bunny",
+      "year": 2008,
+      "mediaType": "movie",
+      "editionLabel": "720p H.264 · 596.46 sec",
+      "providerHints": [
+        "local",
+        "open-movie"
+      ],
+      "author": {
+        "id": "markymark5127",
+        "displayName": "markymark5127"
+      },
+      "status": "published",
+      "ratingAverage": 0,
+      "ratingCount": 0,
+      "downloads": 0,
+      "tags": [
+        "animation",
+        "depth",
+        "depth-anything-v2",
+        "720p",
+        "h264"
+      ],
+      "updatedAt": "2026-10-02T19:55:00Z",
+      "upload": {
+        "profileFileName": "big-buck-bunny-720p-h264.3d.json",
+        "sidecarFileNames": [
+          "big-buck-bunny-720p-h264.depth.webm"
+        ],
+        "totalBytes": 1186100
+      },
+      "profileUrl": "maps/big-buck-bunny/720p-h264/big-buck-bunny-720p-h264.3d.json"
+    }
+  ]
+}
