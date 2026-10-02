@@ -4,34 +4,38 @@ export const providers: StreamingProvider[] = [
   {
     id: "netflix",
     name: "Netflix",
-    homeUrl: "https://www.netflix.com/",
+    shortName: "N",
+    homeUrl: "https://www.netflix.com/login",
     capabilities: ["provider-owned-auth", "provider-owned-playback"],
     integrationStatus: "browser-only",
-    notes: "Quest Browser can play Netflix directly. 3Dstreaming does not receive Netflix credentials or decrypted video frames."
+    notes: "Authentication stays on Netflix. No public consumer OAuth/playback API is exposed for third-party account linking in this prototype."
   },
   {
     id: "disney-plus",
     name: "Disney+",
-    homeUrl: "https://www.disneyplus.com/",
+    shortName: "D+",
+    homeUrl: "https://www.disneyplus.com/login",
     capabilities: ["provider-owned-auth", "provider-owned-playback"],
-    integrationStatus: "research",
-    notes: "Provider-owned sign-in/playback only until an approved catalog or playback integration exists."
+    integrationStatus: "browser-only",
+    notes: "Disney+ uses MyDisney, but 3Dstreaming does not receive or store MyDisney credentials."
   },
   {
     id: "max",
     name: "Max",
-    homeUrl: "https://www.max.com/",
+    shortName: "M",
+    homeUrl: "https://auth.max.com/login",
     capabilities: ["provider-owned-auth", "provider-owned-playback"],
-    integrationStatus: "research",
-    notes: "Provider-owned sign-in/playback only until an approved catalog or playback integration exists."
+    integrationStatus: "browser-only",
+    notes: "Authentication and protected playback stay on Max until a supported account-linking/playback integration exists."
   },
   {
     id: "prime-video",
     name: "Prime Video",
+    shortName: "P",
     homeUrl: "https://www.primevideo.com/",
     capabilities: ["provider-owned-auth", "provider-owned-playback"],
     integrationStatus: "research",
-    notes: "Provider-owned sign-in/playback only until an approved catalog or playback integration exists."
+    notes: "Amazon offers Login with Amazon OAuth, but Amazon identity login alone does not provide a Prime Video playback entitlement or stream."
   }
 ];
 
