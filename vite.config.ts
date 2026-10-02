@@ -7,6 +7,11 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
+      workbox: {
+        globIgnores: [
+          "**/ort-*.wasm"
+        ]
+      },
       manifest: {
         name: "3Dstreaming",
         short_name: "3Dstreaming",
