@@ -94,6 +94,21 @@ export default function App() {
     );
   }, [profiles, searchQuery]);
 
+  const activeProviderPlugins = useMemo(() => {
+    if (!user) return [];
+
+    return providerPlugins.filter((plugin) => {
+      const connection = user.providerConnections.find(
+        (item) => item.providerId === plugin.provider?.id
+      );
+
+      return (
+        connection?.state === "session-active" ||
+        connection?.state === "oauth-connected"
+      );
+    });
+  }, [user]);
+
   const movieItems = catalog.filter((item) => item.kind === "movie");
   const showItems = catalog.filter((item) => item.kind === "series" || item.kind === "episode");
   const featured = catalog.find((item) => item.featured) ?? catalog[0];
@@ -220,6 +235,83 @@ export default function App() {
 
     setUser(next);
     setStatus(result.value.message);
+  }
+
+  async function confirmProvider(providerId: ProviderId) {
+    if (!user) return;
+
+    const now = new Date().toISOString();
+    const existing = user.providerConnections.find(
+      (item) => item.providerId === providerId
+    );
+
+    const next = await accountService.updateProviderConnection({
+      ...existing,
+      providerId,
+      state: "session-active",
+      connectedAt: existing?.connectedAt ?? now,
+      sessionConfirmedAt: now,
+      lastVerifiedAt: now
+    });
+
+    setUser(next);
+
+    const providerName = providerPluginRegistry.get(providerId).displayName;
+    setStatus(
+      `${providerName} is now Active on your 3Dstreaming account. Search deeplinks will use this service.`
+    );
+  }
+
+  async function deactivateProvider(providerId: ProviderId) {
+    if (!user) return;
+
+    const existing = user.providerConnections.find(
+      (item) => item.providerId === providerId
+    );
+
+    const next = await accountService.updateProviderConnection({
+      ...existing,
+      providerId,
+      state: "not-connected"
+    });
+
+    setUser(next);
+
+    const providerName = providerPluginRegistry.get(providerId).displayName;
+    setStatus(
+      `${providerName} is marked signed out in 3Dstreaming. The provider's own browser session is unchanged.`
+    );
+  }
+
+  function copyProviderQueryIfNeeded(providerId: ProviderId, query: string) {
+    if (!query.trim()) return;
+    if (providerId !== "disney-plus" && providerId !== "max") return;
+
+    void navigator.clipboard?.writeText(query.trim()).catch(() => undefined);
+  }
+
+  function openAllConnectedSearches(query: string) {
+    const trimmed = query.trim();
+
+    if (!trimmed) {
+      setStatus("Enter a movie or show before searching your connected services.");
+      return;
+    }
+
+    if (activeProviderPlugins.length === 0) {
+      setStatus("Connect and confirm at least one streaming service first.");
+      setSection("account");
+      return;
+    }
+
+    for (const plugin of activeProviderPlugins) {
+      copyProviderQueryIfNeeded(plugin.provider!.id, trimmed);
+      plugin.openSearch(trimmed);
+    }
+
+    setStatus(
+      `Opened ${activeProviderPlugins.length} connected service search${activeProviderPlugins.length === 1 ? "" : "es"} for “${trimmed}”. Your browser may ask to allow multiple tabs.`
+    );
   }
 
   function bindVideoElement(element: HTMLVideoElement | null) {
@@ -351,20 +443,85 @@ export default function App() {
           />
         </div>
 
-        <div className="provider-search-actions">
-          <span>Search connected services</span>
-          <div>
-            {providerPlugins.map((plugin) => (
-              <button
-                key={plugin.id}
-                className="button secondary compact"
-                onClick={() => plugin.openSearch(searchQuery)}
-              >
-                {plugin.provider?.shortName} {plugin.displayName}
-              </button>
-            ))}
+        <section className="connected-search-panel">
+          <div className="connected-search-heading">
+            <div>
+              <span className="kicker">YOUR STREAMING SERVICES</span>
+              <h2>
+                {activeProviderPlugins.length > 0
+                  ? `Search ${activeProviderPlugins.length} active service${activeProviderPlugins.length === 1 ? "" : "s"}`
+                  : "Connect services to search them"}
+              </h2>
+            </div>
+            <button className="text-button" onClick={() => setSection("account")}>
+              Manage
+            </button>
           </div>
-        </div>
+
+          {activeProviderPlugins.length > 0 ? (
+            <>
+              <div className="connected-search-actions">
+                {activeProviderPlugins.map((plugin) => {
+                  const action = plugin.getSearchAction(searchQuery);
+                  const needsPaste =
+                    plugin.provider!.id === "disney-plus" ||
+                    plugin.provider!.id === "max";
+
+                  return (
+                    <a
+                      key={plugin.id}
+                      className="provider-deeplink"
+                      href={action.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={() =>
+                        copyProviderQueryIfNeeded(
+                          plugin.provider!.id,
+                          searchQuery
+                        )
+                      }
+                    >
+                      <span className={`service-logo service-${plugin.provider!.id}`}>
+                        {plugin.provider!.shortName}
+                      </span>
+                      <span>
+                        <strong>{plugin.displayName}</strong>
+                        <small>
+                          {searchQuery.trim()
+                            ? needsPaste
+                              ? "Open Search · query copied"
+                              : `Search “${searchQuery.trim()}”`
+                            : "Browse service"}
+                        </small>
+                      </span>
+                      <span className="provider-active-dot">●</span>
+                    </a>
+                  );
+                })}
+              </div>
+
+              <button
+                className="button secondary connected-search-all"
+                disabled={!searchQuery.trim()}
+                onClick={() => openAllConnectedSearches(searchQuery)}
+              >
+                Search all active services ↗
+              </button>
+            </>
+          ) : (
+            <button
+              className="connect-services-empty"
+              onClick={() => setSection("account")}
+            >
+              <strong>{user ? "Connect Netflix, Disney+, HBO Max, or Prime Video" : "Sign in to 3Dstreaming first"}</strong>
+              <span>
+                {user
+                  ? "Confirm the services you’re already signed into, then they’ll appear here."
+                  : "Your active streaming-service list belongs to your 3Dstreaming account."}
+              </span>
+            </button>
+          )}
+        </section>
 
         <div className="shelf-heading">
           <h2>Titles</h2>
@@ -543,6 +700,8 @@ export default function App() {
             onSignIn={signIn}
             onSignOut={signOut}
             onProviderConnect={connectProvider}
+            onProviderConfirm={confirmProvider}
+            onProviderDeactivate={deactivateProvider}
             onUpload={() => user ? setShowUpload(true) : undefined}
           />
         );
@@ -580,6 +739,35 @@ export default function App() {
                 <span>{profileCount(selectedItem)} community 3D profile(s)</span>
               </div>
               <p>{selectedItem.summary}</p>
+
+              {activeProviderPlugins.length > 0 && (
+                <div className="detail-provider-links">
+                  <span>Find on your active services</span>
+                  <div>
+                    {activeProviderPlugins.map((plugin) => {
+                      const action = plugin.getSearchAction(selectedItem.title);
+
+                      return (
+                        <a
+                          key={plugin.id}
+                          href={action.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="button secondary compact"
+                          onClick={() =>
+                            copyProviderQueryIfNeeded(
+                              plugin.provider!.id,
+                              selectedItem.title
+                            )
+                          }
+                        >
+                          {plugin.provider!.shortName} {plugin.displayName} ↗
+                        </a>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {profilesFor(selectedItem).length > 0 ? (
                 <div className="detail-profiles">
