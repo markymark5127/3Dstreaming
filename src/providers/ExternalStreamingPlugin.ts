@@ -44,8 +44,7 @@ export class ExternalStreamingPlugin implements StreamingProviderPlugin {
       value: {
         state: "external-auth-opened",
         message:
-          `${this.displayName} authentication opened on the provider's own site. ` +
-          "3Dstreaming does not receive the provider password or a playback token."
+          `${this.displayName} sign-in opened. Return to 3Dstreaming and confirm the session after you finish signing in.`
       }
     };
   }
@@ -55,7 +54,7 @@ export class ExternalStreamingPlugin implements StreamingProviderPlugin {
       ok: false,
       code: "external-action-required",
       message:
-        `${this.displayName} owns this browser session. Sign out on ${this.displayName} to end it.`,
+        `${this.displayName} owns the actual browser session. 3Dstreaming can mark the connection inactive, but signing out must happen on ${this.displayName}.`,
       action: { label: `Open ${this.displayName}`, url: this.options.browseUrl }
     };
   }
@@ -65,27 +64,27 @@ export class ExternalStreamingPlugin implements StreamingProviderPlugin {
       ok: false,
       code: "external-action-required",
       message:
-        `${this.displayName} does not expose a public consumer catalog API to this plugin. ` +
-        "Continue the search in the provider-owned experience.",
-      action: this.searchAction(query)
+        `${this.displayName} search stays provider-owned. Open the provider search experience for this query.`,
+      action: this.getSearchAction(query)
+    };
+  }
+
+  getSearchAction(query: string): PluginExternalAction {
+    const trimmed = query.trim();
+    const url = this.options.searchUrl
+      ? this.options.searchUrl(trimmed)
+      : this.options.browseUrl;
+
+    return {
+      label: trimmed ? `Search ${this.displayName} for “${trimmed}”` : `Browse ${this.displayName}`,
+      url
     };
   }
 
   openSearch(query: string): PluginResult<PluginExternalAction> {
-    const action = this.searchAction(query);
+    const action = this.getSearchAction(query);
     open(action);
     return { ok: true, value: action };
-  }
-
-  private searchAction(query: string): PluginExternalAction {
-    const url = this.options.searchUrl
-      ? this.options.searchUrl(query)
-      : this.options.browseUrl;
-
-    return {
-      label: query.trim() ? `Search ${this.displayName}` : `Browse ${this.displayName}`,
-      url
-    };
   }
 
   async startPlayback(request: PluginPlaybackRequest): Promise<PluginResult<PluginPlaybackState>> {
