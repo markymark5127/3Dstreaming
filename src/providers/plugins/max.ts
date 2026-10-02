@@ -1,5 +1,5 @@
 import { ExternalStreamingPlugin } from "../ExternalStreamingPlugin";
-import { providersById } from "../providers";
+import { providersById } from "../manifests";
 
 export const maxPlugin = new ExternalStreamingPlugin({
   provider: providersById.max,
