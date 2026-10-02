@@ -1,0 +1,6 @@
+<resources>
+  <item name="protected_mono_panel" type="id" />
+  <item name="protected_split_panel" type="id" />
+  <item name="sidecar_panel" type="id" />
+  <item name="controls_panel" type="id" />
+</resources>
