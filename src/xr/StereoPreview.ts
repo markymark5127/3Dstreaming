@@ -13,7 +13,7 @@ export function startStereoPreview(
   video: HTMLVideoElement,
   options: StereoPlaybackOptions
 ): StereoPreviewHandle {
-  const resources = createStereoPlayback(video, options);
+  const resources = createStereoPlayback(video, { ...options, autoEyeFromCamera: false });
 
   const container = document.createElement("div");
   container.className = "stereo-preview-overlay";
