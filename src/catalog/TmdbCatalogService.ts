@@ -3,7 +3,7 @@ import type { ProviderId } from "../providers/types";
 
 interface TmdbSearchItem {
   id: number;
-  media_type: "movie" | "tv" | "person";
+  media_type?: "movie" | "tv" | "person";
   title?: string;
   name?: string;
   overview?: string;
@@ -11,6 +11,8 @@ interface TmdbSearchItem {
   backdrop_path?: string | null;
   release_date?: string;
   first_air_date?: string;
+  popularity?: number;
+  vote_count?: number;
 }
 
 interface TmdbProvider {
@@ -41,6 +43,7 @@ export interface UnifiedCatalogSearchResult {
 const TMDB_BASE = "https://api.themoviedb.org/3";
 const IMAGE_BASE = "https://image.tmdb.org/t/p/w500";
 const BACKDROP_BASE = "https://image.tmdb.org/t/p/w1280";
+const MAX_AVAILABILITY_CANDIDATES = 18;
 
 function token(): string {
   return (import.meta.env.VITE_TMDB_READ_ACCESS_TOKEN ?? "").trim();
@@ -73,6 +76,46 @@ function normalizeProvider(name: string): ProviderId | null {
   return null;
 }
 
+function normalizeText(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function titleFor(item: TmdbSearchItem): string {
+  return item.title ?? item.name ?? "Untitled";
+}
+
+function relevanceScore(item: TmdbSearchItem, query: string): number {
+  const q = normalizeText(query);
+  const title = normalizeText(titleFor(item));
+  const words = title.split(/\s+/).filter(Boolean);
+
+  let score = 0;
+
+  if (title === q) {
+    score += 100_000;
+  } else if (title.startsWith(q)) {
+    score += 80_000;
+  } else if (words.some((word) => word === q)) {
+    score += 70_000;
+  } else if (words.some((word) => word.startsWith(q))) {
+    score += 60_000;
+  } else if (title.includes(q)) {
+    score += 40_000;
+  }
+
+  // TMDB popularity is useful only as a tie-breaker. A strong textual match
+  // should always outrank a popular but unrelated "Battle..." result for "bat".
+  score += Math.min(item.popularity ?? 0, 10_000);
+  score += Math.min(item.vote_count ?? 0, 10_000) * 0.01;
+
+  return score;
+}
+
 async function tmdbFetch<T>(path: string, signal?: AbortSignal): Promise<T> {
   const accessToken = token();
 
@@ -96,11 +139,11 @@ async function tmdbFetch<T>(path: string, signal?: AbortSignal): Promise<T> {
 }
 
 async function providersFor(
-  item: TmdbSearchItem,
+  item: TmdbSearchItem & { media_type: "movie" | "tv" },
   region: string,
   signal?: AbortSignal
 ): Promise<{ providerIds: ProviderId[]; link?: string }> {
-  const type = item.media_type === "movie" ? "movie" : "tv";
+  const type = item.media_type;
   const data = await tmdbFetch<TmdbWatchResponse>(
     `/${type}/${item.id}/watch/providers`,
     signal
@@ -151,17 +194,48 @@ export async function searchUnifiedCatalog(
     return { items: [], configured: true };
   }
 
-  const search = await tmdbFetch<TmdbSearchResponse>(
-    `/search/multi?query=${encodeURIComponent(q)}&include_adult=false&language=en-US&page=1`,
-    signal
-  );
-
-  const candidates = (search.results ?? [])
-    .filter(
-      (item): item is TmdbSearchItem & { media_type: "movie" | "tv" } =>
-        item.media_type === "movie" || item.media_type === "tv"
+  // Search movie and TV indexes independently instead of /search/multi.
+  // That keeps people out of the candidate pool and gives short prefixes like
+  // "bat" enough room for Batman titles to be ranked properly.
+  const [movieSearch, tvSearch] = await Promise.all([
+    tmdbFetch<TmdbSearchResponse>(
+      `/search/movie?query=${encodeURIComponent(q)}&include_adult=false&language=en-US&page=1`,
+      signal
+    ),
+    tmdbFetch<TmdbSearchResponse>(
+      `/search/tv?query=${encodeURIComponent(q)}&include_adult=false&language=en-US&page=1`,
+      signal
     )
-    .slice(0, 12);
+  ]);
+
+  const combined: Array<TmdbSearchItem & { media_type: "movie" | "tv" }> = [
+    ...(movieSearch.results ?? []).map((item) => ({
+      ...item,
+      media_type: "movie" as const
+    })),
+    ...(tvSearch.results ?? []).map((item) => ({
+      ...item,
+      media_type: "tv" as const
+    }))
+  ];
+
+  const seen = new Set<string>();
+  const candidates = combined
+    .filter((item) => {
+      const key = `${item.media_type}:${item.id}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => {
+      const scoreDifference =
+        relevanceScore(b, q) - relevanceScore(a, q);
+
+      if (scoreDifference !== 0) return scoreDifference;
+
+      return titleFor(a).localeCompare(titleFor(b));
+    })
+    .slice(0, MAX_AVAILABILITY_CANDIDATES);
 
   const availability = await Promise.all(
     candidates.map(async (item) => {
@@ -176,7 +250,7 @@ export async function searchUnifiedCatalog(
   return {
     configured: true,
     items: candidates.map((item, index) => {
-      const title = item.title ?? item.name ?? "Untitled";
+      const title = titleFor(item);
       const providerIds = availability[index].providerIds;
       const year = yearFor(item);
 
