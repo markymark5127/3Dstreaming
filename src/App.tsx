@@ -399,7 +399,7 @@ export default function App() {
               key={item.id}
               item={item}
               profileCount={profileCount(item)}
-              enabledProviderIds={enabledProviderIds}
+              activeProviderIds={enabledProviderIds}
               onOpen={setSelectedItem}
             />
           ))}
@@ -516,7 +516,7 @@ export default function App() {
                       key={item.id}
                       item={item}
                       profileCount={profileCount(item)}
-                      enabledProviderIds={enabledProviderIds}
+                      activeProviderIds={enabledProviderIds}
                       onOpen={setSelectedItem}
                     />
                   ))}
@@ -559,7 +559,7 @@ export default function App() {
               key={item.id}
               item={item}
               profileCount={profileCount(item)}
-              enabledProviderIds={enabledProviderIds}
+              activeProviderIds={enabledProviderIds}
               onOpen={setSelectedItem}
             />
           ))}
