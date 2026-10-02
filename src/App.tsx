@@ -1,32 +1,49 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { LocalFileAdapter } from "./adapters/LocalFileAdapter";
 import type { MediaSource } from "./adapters/MediaAdapter";
+import { LocalAccountService } from "./auth/LocalAccountService";
+import type { UserAccount } from "./auth/types";
+import { catalog, searchCatalog } from "./catalog/catalog";
+import type { CatalogItem } from "./catalog/types";
+import { AccountView } from "./components/AccountView";
+import { MediaCard } from "./components/MediaCard";
+import { ProfileShelf } from "./components/ProfileShelf";
+import { Sidebar, type AppSection } from "./components/Sidebar";
+import { Upload3DModal } from "./components/Upload3DModal";
 import { LocalCommunityRegistry } from "./community/LocalCommunityRegistry";
 import type { CommunityProfile } from "./community/types";
 import { loadThreeDProfile } from "./core/sidecar";
-import { providerAdapters } from "./providers/providers";
+import type { ProviderId } from "./providers/types";
 import type { ThreeDProfile } from "./types/threeDProfile";
 import { detectCapabilities, type ClientCapabilities } from "./xr/capabilities";
 import { startWebXRTheater, type XRTheaterHandle } from "./xr/WebXRTheater";
 
 const localAdapter = new LocalFileAdapter();
 const communityRegistry = new LocalCommunityRegistry();
+const accountService = new LocalAccountService();
 
 export default function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const xrHandle = useRef<XRTheaterHandle | null>(null);
+
+  const [section, setSection] = useState<AppSection>("home");
+  const [user, setUser] = useState<UserAccount | null>(null);
+  const [showUpload, setShowUpload] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<CatalogItem | null>(null);
+
+  const [profiles, setProfiles] = useState<CommunityProfile[]>([]);
+  const [myProfiles, setMyProfiles] = useState<CommunityProfile[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+
   const [source, setSource] = useState<MediaSource | null>(null);
-  const [profile, setProfile] = useState<ThreeDProfile | null>(null);
-  const [communityProfiles, setCommunityProfiles] = useState<CommunityProfile[]>([]);
-  const [communityQuery, setCommunityQuery] = useState("");
+  const [activeProfile, setActiveProfile] = useState<ThreeDProfile | null>(null);
   const [capabilities, setCapabilities] = useState<ClientCapabilities | null>(null);
-  const [status, setStatus] = useState("Browse community profiles or choose a local video to begin.");
+  const [status, setStatus] = useState("Choose a local video and community profile to test playback.");
   const [depthStrength, setDepthStrength] = useState(60);
   const [convergence, setConvergence] = useState(50);
 
   useEffect(() => {
-    detectCapabilities().then(setCapabilities);
-    void refreshCommunityProfiles();
+    void bootstrap();
 
     return () => {
       localAdapter.dispose();
@@ -34,41 +51,70 @@ export default function App() {
     };
   }, []);
 
-  const capabilityRows = useMemo(() => {
-    if (!capabilities) return [];
-    return [
-      ["Secure context", capabilities.secureContext],
-      ["PWA/service worker", capabilities.serviceWorker],
-      ["WebGL 2", capabilities.webgl2],
-      ["WebGPU", capabilities.webgpu],
-      ["WebXR", capabilities.webxr],
-      ["Immersive VR", capabilities.immersiveVr]
-    ] as const;
-  }, [capabilities]);
+  async function bootstrap() {
+    const [caps, account, community] = await Promise.all([
+      detectCapabilities(),
+      accountService.getCurrentUser(),
+      communityRegistry.search({ limit: 50 })
+    ]);
 
-  async function refreshCommunityProfiles(query = communityQuery) {
-    const next = await communityRegistry.search({ q: query, limit: 12 });
-    setCommunityProfiles(next);
+    setCapabilities(caps);
+    setUser(account);
+    setProfiles(community);
+
+    if (account) {
+      setMyProfiles(await communityRegistry.search({ authorId: account.id, limit: 50 }));
+    }
   }
 
-  async function searchCommunity(event: FormEvent) {
-    event.preventDefault();
-    await refreshCommunityProfiles();
+  const filteredCatalog = useMemo(
+    () => searchCatalog(searchQuery),
+    [searchQuery]
+  );
+
+  const filteredProfiles = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return profiles;
+
+    return profiles.filter((item) =>
+      [item.title, item.editionLabel, item.author.displayName, ...item.tags]
+        .join(" ")
+        .toLowerCase()
+        .includes(q)
+    );
+  }, [profiles, searchQuery]);
+
+  const movieItems = catalog.filter((item) => item.kind === "movie");
+  const showItems = catalog.filter((item) => item.kind === "series" || item.kind === "episode");
+  const featured = catalog.find((item) => item.featured) ?? catalog[0];
+
+  function profileCount(item: CatalogItem) {
+    return profiles.filter((profile) =>
+      item.profileIds.includes(profile.id) || profile.title === item.title
+    ).length;
   }
 
-  function applyProfile(next: ThreeDProfile, label: string) {
-    setProfile(next);
-    setDepthStrength(Math.round((next.defaults?.depthStrength ?? 0.6) * 100));
-    setConvergence(Math.round((next.defaults?.convergence ?? 0.5) * 100));
-    setStatus(`Loaded 3D profile: ${label}. Match it to the exact movie edition before playback.`);
+  function profilesFor(item: CatalogItem) {
+    return profiles.filter((profile) =>
+      item.profileIds.includes(profile.id) || profile.title === item.title
+    );
+  }
+
+  function useCommunityProfile(item: CommunityProfile) {
+    setActiveProfile(item.profile);
+    setDepthStrength(Math.round((item.profile.defaults?.depthStrength ?? 0.6) * 100));
+    setConvergence(Math.round((item.profile.defaults?.convergence ?? 0.5) * 100));
+    setStatus(`Loaded ${item.title} · ${item.editionLabel}. Pair it with the matching source cut.`);
+    setSection("my-3d");
   }
 
   async function chooseVideo(file?: File) {
     if (!file) return;
+
     try {
       const next = await localAdapter.open(file);
       setSource(next);
-      setStatus(`Loaded ${file.name}. The current XR theater is 2D; stereo sidecar rendering is the next milestone.`);
+      setStatus(`Loaded ${file.name}.`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not open video.");
     }
@@ -76,9 +122,13 @@ export default function App() {
 
   async function chooseProfile(file?: File) {
     if (!file) return;
+
     try {
       const next = await loadThreeDProfile(file);
-      applyProfile(next, `${next.title} / ${next.editionId}`);
+      setActiveProfile(next);
+      setDepthStrength(Math.round((next.defaults?.depthStrength ?? 0.6) * 100));
+      setConvergence(Math.round((next.defaults?.convergence ?? 0.5) * 100));
+      setStatus(`Loaded ${next.title} · ${next.editionId}.`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not read 3D profile.");
     }
@@ -86,242 +136,365 @@ export default function App() {
 
   async function enterVr() {
     if (!videoRef.current) return;
+
     try {
       await videoRef.current.play();
       xrHandle.current = await startWebXRTheater(videoRef.current);
-      setStatus("WebXR theater running. Exit VR from the headset system controls.");
+      setStatus("WebXR theater running.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not enter VR.");
     }
   }
 
-  return (
-    <main className="app-shell">
-      <header className="hero">
-        <div>
-          <span className="eyebrow">COMMUNITY 3D LAYER FOR VIDEO</span>
-          <h1>3Dstreaming</h1>
-          <p>
-            Find a community-made 3D profile for the exact cut you are watching, pair it
-            with a legitimate video source, and render the result across XR devices.
-          </p>
-        </div>
-        <span className="alpha-pill">prototype 0.2</span>
-      </header>
+  async function signIn(email: string, displayName: string) {
+    const next = await accountService.signIn(email, displayName);
+    setUser(next);
+    setMyProfiles(await communityRegistry.search({ authorId: next.id, limit: 50 }));
+  }
 
-      <section className="section-block">
-        <div className="section-heading">
-          <div>
-            <span className="eyebrow">MEDIA SOURCES</span>
-            <h2>Bring the stream. Keep the account with the provider.</h2>
-          </div>
-          <p>
-            Provider sign-in and playback stay provider-owned. 3Dstreaming never asks for
-            or stores streaming-service passwords.
-          </p>
-        </div>
+  async function signOut() {
+    await accountService.signOut();
+    setUser(null);
+    setMyProfiles([]);
+  }
 
-        <div className="provider-grid">
-          {providerAdapters.map((adapter) => (
-            <article className="provider-card" key={adapter.provider.id}>
-              <div>
-                <span className="provider-status">{adapter.provider.integrationStatus}</span>
-                <h3>{adapter.provider.name}</h3>
-                <p>{adapter.provider.notes}</p>
-              </div>
-              <button className="button" onClick={() => adapter.openProvider()}>
-                Open {adapter.provider.name}
-              </button>
-            </article>
+  async function providerOpened(providerId: ProviderId) {
+    if (!user) return;
+
+    const next = await accountService.updateProviderConnection({
+      providerId,
+      state: "provider-session",
+      connectedAt: new Date().toISOString()
+    });
+
+    setUser(next);
+  }
+
+  async function publishProfile(profile: CommunityProfile) {
+    const submitted = await communityRegistry.publish(profile);
+    setMyProfiles((current) => [submitted, ...current.filter((item) => item.id !== submitted.id)]);
+  }
+
+  function renderShelf(title: string, items: CatalogItem[]) {
+    return (
+      <section className="shelf-section">
+        <div className="shelf-heading">
+          <h2>{title}</h2>
+          <button className="text-button">See All</button>
+        </div>
+        <div className="media-shelf">
+          {items.map((item) => (
+            <MediaCard
+              key={item.id}
+              item={item}
+              profileCount={profileCount(item)}
+              onOpen={setSelectedItem}
+            />
           ))}
         </div>
       </section>
+    );
+  }
 
-      <section className="section-block community-section">
-        <div className="section-heading">
-          <div>
-            <span className="eyebrow">COMMUNITY 3D LIBRARY</span>
-            <h2>Profiles are the shared layer.</h2>
+  function homeView() {
+    return (
+      <>
+        <section className={`feature-hero ${featured.artworkClass}`}>
+          <div className="feature-vignette" />
+          <div className="feature-content">
+            <span className="kicker">FEATURED COMMUNITY 3D</span>
+            <h1>{featured.title}</h1>
+            <div className="feature-meta">
+              <span>{featured.year}</span>
+              <span>{featured.runtimeLabel}</span>
+              <span className="three-d-pill">{profileCount(featured)} 3D profile</span>
+            </div>
+            <p>{featured.summary}</p>
+            <div className="feature-actions">
+              <button className="button light" onClick={() => setSelectedItem(featured)}>
+                ▶ View 3D options
+              </button>
+              <button className="button glass" onClick={() => setSection("my-3d")}>
+                Open local source
+              </button>
+            </div>
           </div>
-          <p>
-            Community entries contain depth/disparity/convergence metadata for a specific
-            edition—not the movie itself.
-          </p>
-        </div>
+        </section>
 
-        <form className="community-search" onSubmit={(event) => void searchCommunity(event)}>
+        <section className="shelf-section first-shelf">
+          <div className="shelf-heading">
+            <h2>Popular Community 3D</h2>
+            <button className="text-button" onClick={() => setSection("search")}>Browse Library</button>
+          </div>
+          <ProfileShelf profiles={profiles} onUse={useCommunityProfile} />
+        </section>
+
+        {renderShelf("Movies", movieItems)}
+        {renderShelf("TV & Episodes", showItems)}
+
+        <section className="service-strip">
+          <div>
+            <span className="kicker">YOUR SOURCES</span>
+            <h2>One 3D library. Your existing services.</h2>
+          </div>
+          <div className="mini-service-logos">
+            <span className="service-logo service-netflix">N</span>
+            <span className="service-logo service-disney-plus">D+</span>
+            <span className="service-logo service-max">M</span>
+            <span className="service-logo service-prime-video">P</span>
+          </div>
+          <button className="button glass" onClick={() => setSection("account")}>Manage Services</button>
+        </section>
+      </>
+    );
+  }
+
+  function searchView() {
+    return (
+      <section className="content-section">
+        <span className="kicker">SEARCH</span>
+        <h1 className="page-title">Find something to watch in 3D.</h1>
+
+        <div className="search-bar-large">
+          <span>⌕</span>
           <input
-            value={communityQuery}
-            onChange={(event) => setCommunityQuery(event.target.value)}
-            placeholder="Search title, creator, tag, or edition..."
-            aria-label="Search community 3D profiles"
+            autoFocus
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder="Movies, shows, creators, editions..."
           />
-          <button className="button primary" type="submit">Search profiles</button>
-        </form>
+        </div>
 
-        <div className="community-grid">
-          {communityProfiles.map((item) => (
-            <article className="profile-card" key={item.id}>
-              <div className="profile-title-row">
-                <div>
-                  <h3>{item.title}{item.year ? ` (${item.year})` : ""}</h3>
-                  <p>{item.editionLabel}</p>
-                </div>
-                <span className="profile-rating">★ {item.ratingAverage.toFixed(1)}</span>
-              </div>
+        <div className="shelf-heading">
+          <h2>Titles</h2>
+          <span>{filteredCatalog.length} results</span>
+        </div>
+        <div className="media-grid">
+          {filteredCatalog.map((item) => (
+            <MediaCard
+              key={item.id}
+              item={item}
+              profileCount={profileCount(item)}
+              onOpen={setSelectedItem}
+            />
+          ))}
+        </div>
 
-              <div className="profile-tags">
-                {item.tags.map((tag) => <span key={tag}>{tag}</span>)}
-              </div>
+        <div className="shelf-heading spaced-heading">
+          <h2>Community 3D Profiles</h2>
+          <span>{filteredProfiles.length} results</span>
+        </div>
+        <ProfileShelf profiles={filteredProfiles} onUse={useCommunityProfile} />
+      </section>
+    );
+  }
 
-              <div className="profile-stats">
-                <span>by {item.author.displayName}</span>
-                <span>{item.downloads.toLocaleString()} uses</span>
-                <span>{item.profile.tracks.length} track(s)</span>
-              </div>
+  function libraryView(kind: "movies" | "shows") {
+    const items = kind === "movies" ? movieItems : showItems;
 
-              <button
-                className="button"
-                onClick={() => applyProfile(item.profile, `${item.title} / ${item.editionLabel}`)}
-              >
-                Use this 3D profile
-              </button>
-            </article>
+    return (
+      <section className="content-section">
+        <span className="kicker">{kind === "movies" ? "MOVIES" : "TV SHOWS"}</span>
+        <h1 className="page-title">
+          {kind === "movies" ? "Movies with community depth." : "Series and episode mappings."}
+        </h1>
+        <p className="page-copy">
+          Browse the shared catalog. Titles can exist before anyone contributes a 3D profile,
+          making it easy to see what the community should convert next.
+        </p>
+        <div className="media-grid roomy-grid">
+          {items.map((item) => (
+            <MediaCard
+              key={item.id}
+              item={item}
+              profileCount={profileCount(item)}
+              onOpen={setSelectedItem}
+            />
           ))}
         </div>
       </section>
+    );
+  }
 
-      <section className="section-block">
-        <div className="section-heading">
+  function my3DView() {
+    return (
+      <section className="content-section">
+        <div className="page-heading-row">
           <div>
-            <span className="eyebrow">PLAYBACK LAB</span>
-            <h2>Test the source + sidecar pipeline.</h2>
+            <span className="kicker">MY 3D</span>
+            <h1 className="page-title">Your mappings & playback.</h1>
           </div>
-          <p>
-            Local files are the first fully controllable source while provider-specific
-            playback bridges are researched separately.
-          </p>
+          <button
+            className="button light"
+            onClick={() => user ? setShowUpload(true) : setSection("account")}
+          >
+            ＋ Upload 3D mapping
+          </button>
         </div>
 
-        <div className="workspace">
-          <div className="player-card">
-            <div className="video-frame">
-              {source ? (
-                <video ref={videoRef} src={source.url} controls playsInline />
-              ) : (
-                <div className="empty-state">
-                  <strong>No video loaded</strong>
-                  <span>Start with an MP4/WebM/MKV your browser can decode.</span>
-                </div>
-              )}
+        <section className="shelf-section flush-shelf">
+          <div className="shelf-heading">
+            <h2>Your contributions</h2>
+            <span>{user ? `${myProfiles.length} submissions` : "Sign in to contribute"}</span>
+          </div>
+          {user ? (
+            <ProfileShelf profiles={myProfiles} onUse={useCommunityProfile} />
+          ) : (
+            <button className="sign-in-prompt" onClick={() => setSection("account")}>
+              <strong>Sign in to build the community library</strong>
+              <span>Your uploads, revisions, ratings, and service links live on your 3Dstreaming account.</span>
+            </button>
+          )}
+        </section>
+
+        <section className="playback-studio">
+          <div className="studio-video">
+            {source ? (
+              <video ref={videoRef} src={source.url} controls playsInline />
+            ) : (
+              <div className="studio-empty">
+                <span className="three-d-logo large-logo">3D</span>
+                <strong>Local playback test</strong>
+                <span>Load a source movie to test the active mapping.</span>
+              </div>
+            )}
+          </div>
+
+          <div className="studio-controls">
+            <div>
+              <span className="kicker">ACTIVE MAPPING</span>
+              <h2>{activeProfile?.title ?? "No mapping selected"}</h2>
+              <p>{activeProfile?.editionId ?? "Choose a community profile or load a JSON mapping."}</p>
             </div>
 
-            <div className="toolbar">
+            <label className="control-slider">
+              <span>Depth <strong>{depthStrength}%</strong></span>
+              <input type="range" min="0" max="100" value={depthStrength} onChange={(e) => setDepthStrength(Number(e.target.value))} />
+            </label>
+
+            <label className="control-slider">
+              <span>Convergence <strong>{convergence}%</strong></span>
+              <input type="range" min="0" max="100" value={convergence} onChange={(e) => setConvergence(Number(e.target.value))} />
+            </label>
+
+            <div className="studio-actions">
               <label className="button primary">
-                Open local video
-                <input
-                  hidden
-                  type="file"
-                  accept="video/*,.mkv"
-                  onChange={(event) => void chooseVideo(event.target.files?.[0])}
-                />
+                Open video
+                <input hidden type="file" accept="video/*,.mkv" onChange={(e) => void chooseVideo(e.target.files?.[0])} />
               </label>
-
-              <label className="button">
-                Load profile JSON
-                <input
-                  hidden
-                  type="file"
-                  accept="application/json,.json"
-                  onChange={(event) => void chooseProfile(event.target.files?.[0])}
-                />
+              <label className="button secondary">
+                Load mapping JSON
+                <input hidden type="file" accept=".json,application/json" onChange={(e) => void chooseProfile(e.target.files?.[0])} />
               </label>
-
               <button
-                className="button"
+                className="button secondary"
                 disabled={!source || !capabilities?.immersiveVr}
                 onClick={() => void enterVr()}
               >
-                Enter VR theater
+                Enter VR
               </button>
             </div>
 
-            <p className="status">{status}</p>
+            <p className="studio-status">{status}</p>
           </div>
+        </section>
+      </section>
+    );
+  }
 
-          <aside className="controls-card">
-            <div className="card-heading">
-              <div>
-                <span className="eyebrow">ACTIVE 3D PROFILE</span>
-                <h2>{profile?.title ?? "No sidecar loaded"}</h2>
+  function page() {
+    switch (section) {
+      case "search":
+        return searchView();
+      case "movies":
+        return libraryView("movies");
+      case "shows":
+        return libraryView("shows");
+      case "my-3d":
+        return my3DView();
+      case "account":
+        return (
+          <AccountView
+            user={user}
+            onSignIn={signIn}
+            onSignOut={signOut}
+            onProviderOpened={providerOpened}
+            onUpload={() => user ? setShowUpload(true) : undefined}
+          />
+        );
+      default:
+        return homeView();
+    }
+  }
+
+  return (
+    <div className="tv-app">
+      <Sidebar
+        active={section}
+        onChange={setSection}
+        accountInitials={user?.avatarInitials}
+      />
+
+      <main className="tv-content">
+        {page()}
+      </main>
+
+      {selectedItem && (
+        <div className="detail-backdrop" onMouseDown={() => setSelectedItem(null)}>
+          <article
+            className={`media-detail ${selectedItem.artworkClass}`}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="detail-shade" />
+            <button className="detail-close" onClick={() => setSelectedItem(null)}>×</button>
+            <div className="detail-content">
+              <span className="kicker">{selectedItem.kind.toUpperCase()}</span>
+              <h2>{selectedItem.title}</h2>
+              <div className="feature-meta">
+                <span>{selectedItem.year}</span>
+                <span>{selectedItem.runtimeLabel}</span>
+                <span>{profileCount(selectedItem)} community 3D profile(s)</span>
               </div>
-              <span className={profile ? "dot ready" : "dot"} />
-            </div>
+              <p>{selectedItem.summary}</p>
 
-            <label className="slider-row">
-              <span>Depth strength</span>
-              <strong>{depthStrength}%</strong>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={depthStrength}
-                onChange={(event) => setDepthStrength(Number(event.target.value))}
-              />
-            </label>
-
-            <label className="slider-row">
-              <span>Convergence</span>
-              <strong>{convergence}%</strong>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={convergence}
-                onChange={(event) => setConvergence(Number(event.target.value))}
-              />
-            </label>
-
-            {profile && (
-              <div className="profile-meta">
-                <span>{profile.editionId}</span>
-                <span>{profile.tracks.length} sidecar track(s)</span>
-                <span>{profile.fingerprint.durationSeconds.toFixed(2)} sec</span>
-              </div>
-            )}
-
-            <hr />
-
-            <span className="eyebrow">DEVICE CAPABILITIES</span>
-            <div className="capability-grid">
-              {capabilityRows.map(([label, ok]) => (
-                <div className="capability" key={label}>
-                  <span>{label}</span>
-                  <strong className={ok ? "yes" : "no"}>{ok ? "YES" : "NO"}</strong>
+              {profilesFor(selectedItem).length > 0 ? (
+                <div className="detail-profiles">
+                  {profilesFor(selectedItem).map((item) => (
+                    <button key={item.id} onClick={() => {
+                      useCommunityProfile(item);
+                      setSelectedItem(null);
+                    }}>
+                      <span>
+                        <strong>{item.editionLabel}</strong>
+                        <small>by {item.author.displayName} · ★ {item.ratingAverage.toFixed(1)}</small>
+                      </span>
+                      <span>Use 3D →</span>
+                    </button>
+                  ))}
                 </div>
-              ))}
+              ) : (
+                <button
+                  className="button light"
+                  onClick={() => {
+                    setSelectedItem(null);
+                    user ? setShowUpload(true) : setSection("account");
+                  }}
+                >
+                  Be the first to add a 3D mapping
+                </button>
+              )}
             </div>
-          </aside>
+          </article>
         </div>
-      </section>
+      )}
 
-      <section className="milestones">
-        <article>
-          <span>01</span>
-          <h3>Community registry</h3>
-          <p>Profiles are searchable, attributable, rateable, versioned, and tied to an exact movie cut—not to a device.</p>
-        </article>
-        <article>
-          <span>02</span>
-          <h3>Provider adapters</h3>
-          <p>Netflix, Disney+, Max, Prime, Plex, Jellyfin, and local media can evolve independently behind one source interface.</p>
-        </article>
-        <article>
-          <span>03</span>
-          <h3>XR renderers</h3>
-          <p>WebXR is first. Quest-native, visionOS, and OpenXR clients can all consume the same community sidecar profile.</p>
-        </article>
-      </section>
-    </main>
+      {showUpload && user && (
+        <Upload3DModal
+          user={user}
+          onClose={() => setShowUpload(false)}
+          onSubmit={publishProfile}
+        />
+      )}
+    </div>
   );
 }
