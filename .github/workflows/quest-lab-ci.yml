@@ -1,0 +1,36 @@
+name: Quest Lab CI
+
+on:
+  push:
+    paths:
+      - "quest-protected-media-lab/**"
+      - ".github/workflows/quest-lab-ci.yml"
+  pull_request:
+    paths:
+      - "quest-protected-media-lab/**"
+      - ".github/workflows/quest-lab-ci.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools"
+
+      - name: Install Android SDK 34
+        run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.4.1"
+
+      - name: Build Quest protected media lab
+        run: gradle -p quest-protected-media-lab :app:assembleDebug --stacktrace
