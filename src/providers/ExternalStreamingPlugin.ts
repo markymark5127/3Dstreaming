@@ -44,7 +44,7 @@ export class ExternalStreamingPlugin implements StreamingProviderPlugin {
       value: {
         state: "external-auth-opened",
         message:
-          `${this.displayName} sign-in opened. Return to 3Dstreaming and confirm the session after you finish signing in.`
+          `${this.displayName} sign-in opened on the provider-owned site. 3Dstreaming cannot inspect or verify that cross-origin session from the PWA.`
       }
     };
   }

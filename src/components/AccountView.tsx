@@ -5,18 +5,19 @@ import type { ProviderId } from "../providers/types";
 
 interface AccountViewProps {
   user: UserAccount | null;
+  amazonOAuthConfigured: boolean;
+  providerBridgeConfigured: boolean;
   onSignIn(email: string, displayName: string): Promise<void>;
   onSignOut(): Promise<void>;
   onProviderConnect(providerId: ProviderId): Promise<void>;
+  onProviderVerify(providerId: ProviderId): Promise<void>;
   onProviderDeactivate(providerId: ProviderId): Promise<void>;
+  onIncludeOtherServicesChange(value: boolean): Promise<void>;
   onUpload(): void;
 }
 
 function isMyService(connection?: ProviderConnection): boolean {
-  return Boolean(
-    connection &&
-      connection.state !== "not-connected"
-  );
+  return Boolean(connection && connection.state !== "not-connected");
 }
 
 function isVerified(connection?: ProviderConnection): boolean {
@@ -26,26 +27,43 @@ function isVerified(connection?: ProviderConnection): boolean {
   );
 }
 
-function connectionLabel(connection?: ProviderConnection): string {
+function connectionLabel(
+  providerId: ProviderId,
+  connection?: ProviderConnection
+): string {
   if (!connection || connection.state === "not-connected") {
     return "Not in My Services";
   }
 
   if (isVerified(connection)) {
+    if (providerId === "prime-video" && connection.verificationMethod === "oauth") {
+      return connection.accountLabel
+        ? `Amazon identity verified · ${connection.accountLabel}`
+        : "Amazon identity verified · Prime entitlement remains provider-owned";
+    }
+
     return connection.verificationMethod === "oauth"
-      ? "Verified through OAuth"
+      ? "Verified through official OAuth"
       : "Verified by companion bridge";
   }
 
-  return "In My Services · sign-in is handled by the provider";
+  if (providerId === "prime-video") {
+    return "In My Services · Amazon identity not yet verified";
+  }
+
+  return "In My Services · provider-owned sign-in cannot be verified by this PWA";
 }
 
 export function AccountView({
   user,
+  amazonOAuthConfigured,
+  providerBridgeConfigured,
   onSignIn,
   onSignOut,
   onProviderConnect,
+  onProviderVerify,
   onProviderDeactivate,
+  onIncludeOtherServicesChange,
   onUpload
 }: AccountViewProps) {
   const [email, setEmail] = useState("");
@@ -63,8 +81,8 @@ export function AccountView({
         <h1 className="page-title">Sign in to personalize your services.</h1>
         <p className="page-copy">
           Your 3Dstreaming account remembers the services you use, your community
-          mappings, ratings, and revisions. Streaming-provider credentials never enter
-          3Dstreaming.
+          mappings, ratings, and search preferences. Streaming-provider credentials never
+          enter 3Dstreaming.
         </p>
 
         <form className="account-form" onSubmit={(event) => void submit(event)}>
@@ -74,7 +92,7 @@ export function AccountView({
               type="email"
               required
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(event) => setEmail(event.target.value)}
             />
           </label>
           <label>
@@ -82,15 +100,14 @@ export function AccountView({
             <input
               required
               value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
+              onChange={(event) => setDisplayName(event.target.value)}
             />
           </label>
           <button className="button primary" type="submit">
             Create / sign in
           </button>
           <small>
-            Prototype account: stored in this browser for now. Hosted 3Dstreaming
-            authentication replaces this before production.
+            Prototype 3Dstreaming account: stored in this browser for now.
           </small>
         </form>
       </section>
@@ -128,6 +145,7 @@ export function AccountView({
               );
               const enabled = isMyService(connection);
               const verified = isVerified(connection);
+              const amazonProvider = providerId === "prime-video";
 
               return (
                 <article
@@ -147,7 +165,7 @@ export function AccountView({
                         </span>
                       )}
                     </div>
-                    <span>{connectionLabel(connection)}</span>
+                    <span>{connectionLabel(providerId, connection)}</span>
                   </div>
 
                   <div className="connection-actions">
@@ -156,7 +174,7 @@ export function AccountView({
                         className="button compact"
                         onClick={() => void onProviderConnect(providerId)}
                       >
-                        Add & sign in ↗
+                        Add & open sign-in ↗
                       </button>
                     ) : (
                       <>
@@ -164,8 +182,39 @@ export function AccountView({
                           className="button compact secondary"
                           onClick={() => void onProviderConnect(providerId)}
                         >
-                          Open / sign in ↗
+                          Open provider ↗
                         </button>
+
+                        {amazonProvider && (
+                          <button
+                            className="button compact primary"
+                            disabled={!amazonOAuthConfigured}
+                            onClick={() => void onProviderVerify(providerId)}
+                            title={
+                              amazonOAuthConfigured
+                                ? "Verify Amazon identity through official Login with Amazon OAuth"
+                                : "Set VITE_AMAZON_LWA_CLIENT_ID to enable Login with Amazon"
+                            }
+                          >
+                            {verified ? "Re-check Amazon" : "Verify Amazon OAuth"}
+                          </button>
+                        )}
+
+                        {!amazonProvider && (
+                          providerBridgeConfigured ? (
+                            <button
+                              className="button compact secondary"
+                              onClick={() => void onProviderVerify(providerId)}
+                            >
+                              Check confirmation
+                            </button>
+                          ) : (
+                            <span className="provider-verification-note">
+                              Install companion bridge to confirm
+                            </span>
+                          )
+                        )}
+
                         <button
                           className="text-button danger-text"
                           onClick={() => void onProviderDeactivate(providerId)}
@@ -181,11 +230,38 @@ export function AccountView({
           </div>
 
           <p className="provider-disclaimer">
-            My Services is a preference list, not a claim that 3Dstreaming authenticated
-            your Netflix, Disney+, HBO Max, or Prime Video account. A provider is only
-            shown as Verified when an approved OAuth integration or companion bridge can
-            actually prove the session.
+            Login with Amazon can verify the Amazon identity attached to Prime Video, but
+            it does not prove a Prime Video subscription entitlement. Netflix, Disney+,
+            and HBO Max do not currently expose a public consumer OAuth flow that this PWA
+            can use, so their sign-in remains provider-owned.
           </p>
+
+          <section className="account-preferences">
+            <div>
+              <span className="kicker">SEARCH</span>
+              <h2>Streaming search</h2>
+              <p>
+                By default, unified search only includes titles available on services in
+                My Services.
+              </p>
+            </div>
+
+            <label className="preference-toggle">
+              <input
+                type="checkbox"
+                checked={user.preferences.includeOtherStreamingServices}
+                onChange={(event) =>
+                  void onIncludeOtherServicesChange(event.target.checked)
+                }
+              />
+              <span>
+                <strong>Show titles from other services</strong>
+                <small>
+                  Include supported providers outside My Services in unified search.
+                </small>
+              </span>
+            </label>
+          </section>
         </div>
 
         <div className="creator-panel">

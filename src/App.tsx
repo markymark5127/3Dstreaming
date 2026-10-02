@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LocalFileAdapter } from "./adapters/LocalFileAdapter";
 import type { MediaSource } from "./adapters/MediaAdapter";
+import { amazonLogin } from "./auth/AmazonLoginWithAmazon";
 import { LocalAccountService } from "./auth/LocalAccountService";
+import { providerSessionBridge } from "./auth/ProviderSessionBridge";
 import type { UserAccount } from "./auth/types";
 import { catalog, searchCatalog } from "./catalog/catalog";
 import { searchUnifiedCatalog } from "./catalog/TmdbCatalogService";
 import type { CatalogItem } from "./catalog/types";
+import {
+  isWatchmodeConfigured,
+  resolveDirectProviderLinks
+} from "./catalog/WatchmodeLinkService";
 import { AccountView } from "./components/AccountView";
 import { MediaCard } from "./components/MediaCard";
 import { MapperPanel } from "./components/MapperPanel";
@@ -47,6 +53,7 @@ export default function App() {
   const [streamingSearchLoading, setStreamingSearchLoading] = useState(false);
   const [streamingSearchConfigured, setStreamingSearchConfigured] = useState(true);
   const [streamingSearchError, setStreamingSearchError] = useState("");
+  const [providerLinksLoading, setProviderLinksLoading] = useState(false);
 
   const [source, setSource] = useState<MediaSource | null>(null);
   const [activeProfile, setActiveProfile] = useState<ThreeDProfile | null>(null);
@@ -115,6 +122,27 @@ export default function App() {
     () => enabledProviderPlugins.map((plugin) => plugin.provider!.id),
     [enabledProviderPlugins]
   );
+
+  const includeOtherServices =
+    user?.preferences.includeOtherStreamingServices ?? false;
+
+  const visibleStreamingResults = useMemo(() => {
+    const withSupportedProviders = streamingResults.filter(
+      (item) => (item.availableProviderIds?.length ?? 0) > 0
+    );
+
+    if (includeOtherServices) return withSupportedProviders;
+    if (!user || enabledProviderIds.length === 0) return [];
+
+    return withSupportedProviders
+      .map((item) => ({
+        ...item,
+        availableProviderIds: item.availableProviderIds?.filter((providerId) =>
+          enabledProviderIds.includes(providerId)
+        )
+      }))
+      .filter((item) => (item.availableProviderIds?.length ?? 0) > 0);
+  }, [streamingResults, includeOtherServices, user, enabledProviderIds]);
 
   useEffect(() => {
     const query = searchQuery.trim();
@@ -295,8 +323,154 @@ export default function App() {
     );
   }
 
+  async function verifyProvider(providerId: ProviderId) {
+    if (!user) return;
+
+    const existing = user.providerConnections.find(
+      (item) => item.providerId === providerId
+    );
+
+    if (providerId !== "prime-video") {
+      if (!providerSessionBridge.isConfigured()) {
+        setStatus(
+          "Install the Provider Session Bridge and configure VITE_PROVIDER_BRIDGE_EXTENSION_ID to confirm this provider session."
+        );
+        return;
+      }
+
+      try {
+        const bridgeStatus = await providerSessionBridge.getStatus(providerId);
+
+        if (!bridgeStatus) {
+          setStatus(
+            "No provider-page confirmation was found. Open the service, sign in, and click the 3Dstreaming confirmation button shown by the companion extension."
+          );
+          return;
+        }
+
+        const next = await accountService.updateProviderConnection({
+          ...existing,
+          providerId,
+          state: "bridge-verified",
+          verificationMethod: "bridge",
+          connectedAt: existing?.connectedAt ?? bridgeStatus.confirmedAt,
+          lastVerifiedAt: bridgeStatus.confirmedAt,
+          sessionConfirmedAt: bridgeStatus.confirmedAt
+        });
+
+        setUser(next);
+        setStatus(
+          `${providerPluginRegistry.get(providerId).displayName} was confirmed from the provider page at ${new Date(bridgeStatus.confirmedAt).toLocaleString()}.`
+        );
+      } catch (error) {
+        setStatus(
+          error instanceof Error
+            ? error.message
+            : "Provider session confirmation failed."
+        );
+      }
+
+      return;
+    }
+
+    if (!amazonLogin.isConfigured()) {
+      setStatus(
+        "Login with Amazon is not configured. Add VITE_AMAZON_LWA_CLIENT_ID and register this HTTPS origin in your Amazon security profile."
+      );
+      return;
+    }
+
+    try {
+      const profile =
+        existing?.state === "oauth-connected"
+          ? await amazonLogin.verify().catch(() => amazonLogin.connect())
+          : await amazonLogin.connect();
+
+      const now = new Date().toISOString();
+      const accountLabel = profile.email ?? profile.name ?? "Amazon account";
+
+      const next = await accountService.updateProviderConnection({
+        ...existing,
+        providerId,
+        state: "oauth-connected",
+        verificationMethod: "oauth",
+        connectedAt: existing?.connectedAt ?? now,
+        lastVerifiedAt: now,
+        accountLabel
+      });
+
+      setUser(next);
+      setStatus(
+        `Amazon identity verified as ${accountLabel}. Prime Video still performs the actual subscription/entitlement check when the title opens.`
+      );
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : "Amazon OAuth verification failed."
+      );
+    }
+  }
+
+  async function updateIncludeOtherServices(value: boolean) {
+    if (!user) return;
+
+    const next = await accountService.updatePreferences({
+      includeOtherStreamingServices: value
+    });
+
+    setUser(next);
+    setStatus(
+      value
+        ? "Unified search now includes supported services outside My Services."
+        : "Unified search now only shows titles available on My Services."
+    );
+  }
+
+  async function openCatalogItem(item: CatalogItem) {
+    setSelectedItem(item);
+
+    if (
+      item.externalSource !== "tmdb" ||
+      !item.externalId ||
+      !isWatchmodeConfigured()
+    ) {
+      return;
+    }
+
+    setProviderLinksLoading(true);
+
+    try {
+      const links = await resolveDirectProviderLinks(
+        item,
+        import.meta.env.VITE_STREAMING_REGION || "US"
+      );
+
+      setSelectedItem((current) =>
+        current?.id === item.id
+          ? {
+              ...current,
+              providerLinks: links
+            }
+          : current
+      );
+    } catch (error) {
+      setStatus(
+        error instanceof Error
+          ? error.message
+          : "Could not resolve exact provider title links."
+      );
+    } finally {
+      setProviderLinksLoading(false);
+    }
+  }
+
   async function deactivateProvider(providerId: ProviderId) {
     if (!user) return;
+
+    if (providerId === "prime-video") {
+      void amazonLogin.logout().catch(() => undefined);
+    }
+
+    void providerSessionBridge.clearStatus(providerId).catch(() => undefined);
 
     const existing = user.providerConnections.find(
       (item) => item.providerId === providerId
@@ -400,7 +574,7 @@ export default function App() {
               item={item}
               profileCount={profileCount(item)}
               activeProviderIds={enabledProviderIds}
-              onOpen={setSelectedItem}
+              onOpen={openCatalogItem}
             />
           ))}
         </div>
@@ -423,7 +597,7 @@ export default function App() {
             </div>
             <p>{featured.summary}</p>
             <div className="feature-actions">
-              <button className="button light" onClick={() => setSelectedItem(featured)}>
+              <button className="button light" onClick={() => void openCatalogItem(featured)}>
                 ▶ View 3D options
               </button>
               <button className="button glass" onClick={() => setSection("my-3d")}>
@@ -486,7 +660,7 @@ export default function App() {
                   ? "Search once. See where it streams."
                   : streamingSearchLoading
                     ? `Searching “${searchQuery.trim()}”…`
-                    : `${streamingResults.length} streaming result${streamingResults.length === 1 ? "" : "s"}`}
+                    : `${visibleStreamingResults.length} streaming result${visibleStreamingResults.length === 1 ? "" : "s"}`}
               </h2>
             </div>
             <button className="text-button" onClick={() => setSection("account")}>
@@ -508,28 +682,46 @@ export default function App() {
               <span>{streamingSearchError}</span>
             </div>
           ) : searchQuery.trim().length >= 2 && !streamingSearchLoading ? (
-            streamingResults.length > 0 ? (
+            !user ? (
+              <div className="catalog-config-note">
+                <strong>Sign in to personalize streaming search.</strong>
+                <span>
+                  Search defaults to My Services. Sign in, add your services, or enable
+                  “Show titles from other services” in Account.
+                </span>
+              </div>
+            ) : enabledProviderIds.length === 0 && !includeOtherServices ? (
+              <div className="catalog-config-note">
+                <strong>Add at least one service to My Services.</strong>
+                <span>
+                  Or enable “Show titles from other services” in Account to search the
+                  full supported catalog.
+                </span>
+              </div>
+            ) : visibleStreamingResults.length > 0 ? (
               <>
                 <div className="media-grid streaming-results-grid">
-                  {streamingResults.map((item) => (
+                  {visibleStreamingResults.map((item) => (
                     <MediaCard
                       key={item.id}
                       item={item}
                       profileCount={profileCount(item)}
                       activeProviderIds={enabledProviderIds}
-                      onOpen={setSelectedItem}
+                      onOpen={openCatalogItem}
                     />
                   ))}
                 </div>
                 <p className="availability-attribution">
-                  Streaming availability powered by JustWatch via TMDB. Availability can vary by
-                  region, plan, and active provider profile.
+                  Availability powered by JustWatch via TMDB. Exact title links are resolved
+                  through Watchmode when configured. Availability can vary by region and plan.
                 </p>
               </>
             ) : (
               <div className="catalog-config-note">
-                <strong>No supported streaming availability found.</strong>
-                <span>Try another title, spelling, or edition.</span>
+                <strong>No matching title is available on the services you selected.</strong>
+                <span>
+                  Try another title or enable “Show titles from other services” in Account.
+                </span>
               </div>
             )
           ) : (
@@ -560,7 +752,7 @@ export default function App() {
               item={item}
               profileCount={profileCount(item)}
               activeProviderIds={enabledProviderIds}
-              onOpen={setSelectedItem}
+              onOpen={openCatalogItem}
             />
           ))}
         </div>
@@ -593,7 +785,7 @@ export default function App() {
               key={item.id}
               item={item}
               profileCount={profileCount(item)}
-              onOpen={setSelectedItem}
+              onOpen={openCatalogItem}
             />
           ))}
         </div>
@@ -726,8 +918,12 @@ export default function App() {
             user={user}
             onSignIn={signIn}
             onSignOut={signOut}
+            amazonOAuthConfigured={amazonLogin.isConfigured()}
+            providerBridgeConfigured={providerSessionBridge.isConfigured()}
             onProviderConnect={connectProvider}
+            onProviderVerify={verifyProvider}
             onProviderDeactivate={deactivateProvider}
+            onIncludeOtherServicesChange={updateIncludeOtherServices}
             onUpload={() => user ? setShowUpload(true) : undefined}
           />
         );
@@ -778,35 +974,58 @@ export default function App() {
               {(selectedItem.availableProviderIds?.length ?? 0) > 0 && (
                 <div className="detail-provider-links">
                   <span>Stream on</span>
+                  {providerLinksLoading && (
+                    <small className="provider-link-loading">
+                      Resolving exact title links…
+                    </small>
+                  )}
                   <div>
                     {providerPlugins
                       .filter((plugin) =>
                         selectedItem.availableProviderIds?.includes(plugin.provider!.id)
                       )
                       .map((plugin) => {
-                        const action = plugin.getSearchAction(selectedItem.title);
-                        const enabled = enabledProviderIds.includes(plugin.provider!.id);
+                        const providerId = plugin.provider!.id;
+                        const enabled = enabledProviderIds.includes(providerId);
+                        const directUrl = selectedItem.providerLinks?.[providerId];
+
+                        if (!directUrl) {
+                          return (
+                            <button
+                              key={plugin.id}
+                              className="button compact secondary"
+                              disabled
+                              title={
+                                isWatchmodeConfigured()
+                                  ? "Watchmode did not return a direct web link for this provider/title."
+                                  : "Configure VITE_WATCHMODE_API_KEY to resolve exact title links."
+                              }
+                            >
+                              {plugin.provider!.shortName} {plugin.displayName}
+                              {enabled ? " · My Service" : ""} · no direct link
+                            </button>
+                          );
+                        }
 
                         return (
                           <a
                             key={plugin.id}
-                            href={action.url}
+                            href={directUrl}
                             target="_blank"
                             rel="noreferrer"
                             className={`button compact ${enabled ? "primary" : "secondary"}`}
-                            onClick={() =>
-                              copyProviderQueryIfNeeded(
-                                plugin.provider!.id,
-                                selectedItem.title
-                              )
-                            }
                           >
-                            {plugin.provider!.shortName} {plugin.displayName}
+                            ▶ {plugin.provider!.name}
                             {enabled ? " · My Service" : ""} ↗
                           </a>
                         );
                       })}
                   </div>
+                  {!isWatchmodeConfigured() && (
+                    <small className="provider-link-note">
+                      Add VITE_WATCHMODE_API_KEY to enable exact provider title links.
+                    </small>
+                  )}
                   {selectedItem.availabilitySourceUrl && (
                     <a
                       className="availability-source-link"

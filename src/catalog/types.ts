@@ -18,6 +18,7 @@ export interface CatalogItem {
   profileIds: string[];
   providerIds: string[];
   availableProviderIds?: ProviderId[];
+  providerLinks?: Partial<Record<ProviderId, string>>;
   externalSource?: "tmdb";
   externalId?: number;
   availabilitySourceUrl?: string;

@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "3Dstreaming Provider Session Bridge",
+  "version": "0.1.0",
+  "description": "Lets you confirm a provider-owned browser session to 3Dstreaming without sharing passwords, cookies, tokens, or video data.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://www.netflix.com/*",
+    "https://www.disneyplus.com/*",
+    "https://www.hbomax.com/*",
+    "https://auth.max.com/*",
+    "https://www.primevideo.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.netflix.com/*",
+        "https://www.disneyplus.com/*",
+        "https://www.hbomax.com/*",
+        "https://auth.max.com/*",
+        "https://www.primevideo.com/*"
+      ],
+      "js": ["provider-confirm.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "externally_connectable": {
+    "matches": [
+      "http://localhost/*",
+      "https://localhost/*",
+      "https://*.app.github.dev/*"
+    ]
+  }
+}

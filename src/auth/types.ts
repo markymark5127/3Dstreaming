@@ -26,12 +26,17 @@ export interface ProviderConnection {
   tokenReference?: string;
 }
 
+export interface UserPreferences {
+  includeOtherStreamingServices: boolean;
+}
+
 export interface UserAccount {
   id: string;
   email: string;
   displayName: string;
   avatarInitials: string;
   providerConnections: ProviderConnection[];
+  preferences: UserPreferences;
   createdAt: string;
 }
 
@@ -40,4 +45,5 @@ export interface AccountService {
   signIn(email: string, displayName: string): Promise<UserAccount>;
   signOut(): Promise<void>;
   updateProviderConnection(connection: ProviderConnection): Promise<UserAccount>;
+  updatePreferences(preferences: Partial<UserPreferences>): Promise<UserAccount>;
 }
