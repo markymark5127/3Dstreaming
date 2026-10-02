@@ -3,6 +3,7 @@ import { LocalFileAdapter } from "./adapters/LocalFileAdapter";
 import type { MediaSource } from "./adapters/MediaAdapter";
 import { amazonLogin } from "./auth/AmazonLoginWithAmazon";
 import { LocalAccountService } from "./auth/LocalAccountService";
+import { providerSessionBridge } from "./auth/ProviderSessionBridge";
 import type { UserAccount } from "./auth/types";
 import { catalog, searchCatalog } from "./catalog/catalog";
 import { searchUnifiedCatalog } from "./catalog/TmdbCatalogService";
@@ -133,11 +134,14 @@ export default function App() {
     if (includeOtherServices) return withSupportedProviders;
     if (!user || enabledProviderIds.length === 0) return [];
 
-    return withSupportedProviders.filter((item) =>
-      item.availableProviderIds?.some((providerId) =>
-        enabledProviderIds.includes(providerId)
-      )
-    );
+    return withSupportedProviders
+      .map((item) => ({
+        ...item,
+        availableProviderIds: item.availableProviderIds?.filter((providerId) =>
+          enabledProviderIds.includes(providerId)
+        )
+      }))
+      .filter((item) => (item.availableProviderIds?.length ?? 0) > 0);
   }, [streamingResults, includeOtherServices, user, enabledProviderIds]);
 
   useEffect(() => {
@@ -322,10 +326,50 @@ export default function App() {
   async function verifyProvider(providerId: ProviderId) {
     if (!user) return;
 
+    const existing = user.providerConnections.find(
+      (item) => item.providerId === providerId
+    );
+
     if (providerId !== "prime-video") {
-      setStatus(
-        "This provider does not expose a public consumer OAuth flow to 3Dstreaming. Verification requires a supported provider API or companion bridge."
-      );
+      if (!providerSessionBridge.isConfigured()) {
+        setStatus(
+          "Install the Provider Session Bridge and configure VITE_PROVIDER_BRIDGE_EXTENSION_ID to confirm this provider session."
+        );
+        return;
+      }
+
+      try {
+        const bridgeStatus = await providerSessionBridge.getStatus(providerId);
+
+        if (!bridgeStatus) {
+          setStatus(
+            "No provider-page confirmation was found. Open the service, sign in, and click the 3Dstreaming confirmation button shown by the companion extension."
+          );
+          return;
+        }
+
+        const next = await accountService.updateProviderConnection({
+          ...existing,
+          providerId,
+          state: "bridge-verified",
+          verificationMethod: "bridge",
+          connectedAt: existing?.connectedAt ?? bridgeStatus.confirmedAt,
+          lastVerifiedAt: bridgeStatus.confirmedAt,
+          sessionConfirmedAt: bridgeStatus.confirmedAt
+        });
+
+        setUser(next);
+        setStatus(
+          `${providerPluginRegistry.get(providerId).displayName} was confirmed from the provider page at ${new Date(bridgeStatus.confirmedAt).toLocaleString()}.`
+        );
+      } catch (error) {
+        setStatus(
+          error instanceof Error
+            ? error.message
+            : "Provider session confirmation failed."
+        );
+      }
+
       return;
     }
 
@@ -335,10 +379,6 @@ export default function App() {
       );
       return;
     }
-
-    const existing = user.providerConnections.find(
-      (item) => item.providerId === providerId
-    );
 
     try {
       const profile =
@@ -429,6 +469,8 @@ export default function App() {
     if (providerId === "prime-video") {
       void amazonLogin.logout().catch(() => undefined);
     }
+
+    void providerSessionBridge.clearStatus(providerId).catch(() => undefined);
 
     const existing = user.providerConnections.find(
       (item) => item.providerId === providerId
@@ -877,6 +919,7 @@ export default function App() {
             onSignIn={signIn}
             onSignOut={signOut}
             amazonOAuthConfigured={amazonLogin.isConfigured()}
+            providerBridgeConfigured={providerSessionBridge.isConfigured()}
             onProviderConnect={connectProvider}
             onProviderVerify={verifyProvider}
             onProviderDeactivate={deactivateProvider}
