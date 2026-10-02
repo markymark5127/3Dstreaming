@@ -61,30 +61,31 @@ export class ExternalStreamingPlugin implements StreamingProviderPlugin {
   }
 
   async search(query: string): Promise<PluginResult<PluginSearchResult[]>> {
-    const actionResult = this.openSearch(query);
-
     return {
       ok: false,
       code: "external-action-required",
       message:
         `${this.displayName} does not expose a public consumer catalog API to this plugin. ` +
         "Continue the search in the provider-owned experience.",
-      action: actionResult.ok ? actionResult.value : undefined
+      action: this.searchAction(query)
     };
   }
 
   openSearch(query: string): PluginResult<PluginExternalAction> {
+    const action = this.searchAction(query);
+    open(action);
+    return { ok: true, value: action };
+  }
+
+  private searchAction(query: string): PluginExternalAction {
     const url = this.options.searchUrl
       ? this.options.searchUrl(query)
       : this.options.browseUrl;
 
-    const action: PluginExternalAction = {
+    return {
       label: query.trim() ? `Search ${this.displayName}` : `Browse ${this.displayName}`,
       url
     };
-
-    open(action);
-    return { ok: true, value: action };
   }
 
   async startPlayback(request: PluginPlaybackRequest): Promise<PluginResult<PluginPlaybackState>> {
