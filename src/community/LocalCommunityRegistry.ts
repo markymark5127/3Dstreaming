@@ -9,6 +9,8 @@ const seedProfiles: CommunityProfile[] = [
     id: "demo-big-buck-bunny",
     title: "Big Buck Bunny",
     year: 2008,
+    mediaType: "movie",
+    mediaType: "movie",
     editionLabel: "Open movie demo / 24 fps",
     providerHints: ["local", "http"],
     author: { id: "3dstreaming-team", displayName: "3Dstreaming Team" },
@@ -104,6 +106,8 @@ export class LocalCommunityRegistry implements CommunityRegistry {
   async search(query: CommunityProfileQuery = {}): Promise<CommunityProfile[]> {
     const q = query.q?.trim().toLowerCase();
     const provider = query.provider?.trim().toLowerCase();
+    const mediaType = query.mediaType;
+    const authorId = query.authorId;
 
     return this.profiles
       .filter((item) => item.status === "published")
@@ -120,6 +124,8 @@ export class LocalCommunityRegistry implements CommunityRegistry {
         if (!provider) return true;
         return item.providerHints.some((hint) => hint.toLowerCase() === provider);
       })
+      .filter((item) => !mediaType || (item.mediaType ?? "movie") === mediaType)
+      .filter((item) => !authorId || item.author.id === authorId)
       .slice(0, query.limit ?? 20);
   }
 
