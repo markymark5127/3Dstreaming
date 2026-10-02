@@ -191,6 +191,10 @@ export class BrowserDepthMapper {
       let stopped = false;
       let currentProcessing: Promise<void> | null = null;
       let fallbackAnimationFrame = 0;
+      let rejectProcessingFailure: ((reason?: unknown) => void) | null = null;
+      const processingFailure = new Promise<never>((_resolve, reject) => {
+        rejectProcessingFailure = reject;
+      });
 
       const paintDepth = (values: Uint8ClampedArray) => {
         const depthImage = depthContext.createImageData(
@@ -257,7 +261,7 @@ export class BrowserDepthMapper {
             stopped = true;
             video.pause();
             if (recorder.state !== "inactive") recorder.stop();
-            throw error;
+            rejectProcessingFailure?.(error);
           })
           .finally(() => {
             currentProcessing = null;
@@ -324,7 +328,10 @@ export class BrowserDepthMapper {
         scheduleFrames();
 
         await video.play();
-        await waitForMediaEvent(video, "ended", signal);
+        await Promise.race([
+          waitForMediaEvent(video, "ended", signal),
+          processingFailure
+        ]);
 
         onProgress?.({
           phase: "finalizing",
