@@ -1,0 +1,225 @@
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #f5f7fb;
+  background: #090b10;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 15% -5%, rgba(83, 119, 255, 0.18), transparent 35rem),
+    #090b10;
+}
+
+button, input { font: inherit; }
+
+.app-shell {
+  width: min(1180px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 48px 0 64px;
+}
+
+.hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: start;
+  margin-bottom: 32px;
+}
+
+.hero h1 {
+  margin: 4px 0 10px;
+  font-size: clamp(2.8rem, 7vw, 5.8rem);
+  line-height: 0.95;
+  letter-spacing: -0.06em;
+}
+
+.hero p {
+  max-width: 700px;
+  margin: 0;
+  color: #aab2c2;
+  font-size: 1.05rem;
+  line-height: 1.65;
+}
+
+.eyebrow {
+  color: #7f8aa0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.alpha-pill {
+  border: 1px solid #2b3444;
+  border-radius: 999px;
+  padding: 8px 12px;
+  color: #aab2c2;
+  white-space: nowrap;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(300px, 0.8fr);
+  gap: 18px;
+}
+
+.player-card,
+.controls-card,
+.milestones article {
+  border: 1px solid #202633;
+  background: rgba(15, 18, 25, 0.88);
+  border-radius: 22px;
+}
+
+.player-card { overflow: hidden; }
+
+.video-frame {
+  aspect-ratio: 16 / 9;
+  display: grid;
+  place-items: center;
+  background: #020304;
+}
+
+.video-frame video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  color: #7f8aa0;
+}
+
+.empty-state strong { color: #dfe5ef; }
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 16px 18px 10px;
+}
+
+.button {
+  appearance: none;
+  border: 1px solid #333c4d;
+  background: #171c25;
+  color: #eef2f8;
+  padding: 10px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.button:hover:not(:disabled) { border-color: #56627a; }
+.button:disabled { opacity: 0.45; cursor: not-allowed; }
+.button.primary { background: #eef2f8; color: #10131a; border-color: #eef2f8; }
+
+.status {
+  margin: 0;
+  padding: 4px 18px 18px;
+  color: #8f99ab;
+  font-size: 0.9rem;
+}
+
+.controls-card { padding: 20px; }
+
+.card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.card-heading h2 {
+  margin: 5px 0 0;
+  font-size: 1.2rem;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #4a5363;
+  box-shadow: 0 0 0 6px rgba(74, 83, 99, 0.12);
+}
+
+.dot.ready {
+  background: #67e8a5;
+  box-shadow: 0 0 0 6px rgba(103, 232, 165, 0.12);
+}
+
+.slider-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  margin-top: 24px;
+  color: #c7ced9;
+}
+
+.slider-row input { grid-column: 1 / -1; width: 100%; }
+
+.profile-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 18px;
+  color: #8490a3;
+  font-size: 0.85rem;
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid #252c39;
+  margin: 22px 0;
+}
+
+.capability-grid {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.capability {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #9ca6b6;
+}
+
+.capability strong { font-size: 0.76rem; letter-spacing: 0.08em; }
+.capability .yes { color: #67e8a5; }
+.capability .no { color: #ff8d8d; }
+
+.milestones {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.milestones article { padding: 20px; }
+.milestones article > span { color: #64708a; font-weight: 800; }
+.milestones h3 { margin: 18px 0 8px; }
+.milestones p { margin: 0; color: #8f99ab; line-height: 1.55; }
+
+.xr-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+}
+
+@media (max-width: 860px) {
+  .workspace, .milestones { grid-template-columns: 1fr; }
+  .hero { flex-direction: column; }
+}
