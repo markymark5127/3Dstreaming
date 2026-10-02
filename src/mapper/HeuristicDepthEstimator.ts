@@ -1,15 +1,15 @@
 import type { DepthEstimator } from "./types";
 
 export class HeuristicDepthEstimator implements DepthEstimator {
-  readonly id = "browser-fast-v1";
+  readonly id = "browser-fast-v1" as const;
   readonly name = "Fast Browser Mapper";
 
   constructor(private readonly temporalSmoothing = 0.78) {}
 
-  estimate(
+  async estimate(
     source: ImageData,
     previousDepth?: Uint8ClampedArray
-  ): Uint8ClampedArray {
+  ): Promise<Uint8ClampedArray> {
     const { width, height, data } = source;
     const count = width * height;
     const luma = new Float32Array(count);
@@ -23,6 +23,7 @@ export class HeuristicDepthEstimator implements DepthEstimator {
 
     for (let y = 0; y < height; y += 1) {
       const ny = y / Math.max(1, height - 1);
+
       for (let x = 0; x < width; x += 1) {
         const i = y * width + x;
         const nx = x / Math.max(1, width - 1);
@@ -37,6 +38,7 @@ export class HeuristicDepthEstimator implements DepthEstimator {
 
         let neighborhood = 0;
         let samples = 0;
+
         for (let sy = y0; sy <= y1; sy += 2) {
           for (let sx = x0; sx <= x1; sx += 2) {
             neighborhood += luma[sy * width + sx];
@@ -48,9 +50,6 @@ export class HeuristicDepthEstimator implements DepthEstimator {
         const contrast = Math.min(1, Math.abs(luma[i] - localMean) * 4.0);
         const lowerFramePrior = ny;
 
-        // This is intentionally a cheap visual-depth baseline rather than a semantic ML model.
-        // It combines framing priors + local contrast so the rest of the sidecar pipeline can
-        // be exercised entirely in-browser.
         let depth =
           centerPrior * 0.48 +
           lowerFramePrior * 0.24 +
