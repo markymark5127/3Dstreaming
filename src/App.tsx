@@ -13,6 +13,9 @@ import { Upload3DModal } from "./components/Upload3DModal";
 import { LocalCommunityRegistry } from "./community/LocalCommunityRegistry";
 import type { CommunityProfile } from "./community/types";
 import { loadThreeDProfile } from "./core/sidecar";
+import { localMediaPlugin } from "./providers/LocalMediaPlugin";
+import { providerPlugins } from "./providers/providers";
+import { providerPluginRegistry } from "./providers/registry";
 import type { ProviderId } from "./providers/types";
 import type { ThreeDProfile } from "./types/threeDProfile";
 import { detectCapabilities, type ClientCapabilities } from "./xr/capabilities";
@@ -158,16 +161,34 @@ export default function App() {
     setMyProfiles([]);
   }
 
-  async function providerOpened(providerId: ProviderId) {
+  async function connectProvider(providerId: ProviderId) {
     if (!user) return;
+
+    const plugin = providerPluginRegistry.get(providerId);
+    const result = await plugin.connect();
+
+    if (!result.ok) {
+      setStatus(result.message);
+      return;
+    }
 
     const next = await accountService.updateProviderConnection({
       providerId,
-      state: "provider-session",
-      connectedAt: new Date().toISOString()
+      state:
+        result.value.state === "connected"
+          ? "oauth-connected"
+          : "provider-session",
+      connectedAt: new Date().toISOString(),
+      accountLabel: result.value.accountLabel
     });
 
     setUser(next);
+    setStatus(result.value.message);
+  }
+
+  function bindVideoElement(element: HTMLVideoElement | null) {
+    videoRef.current = element;
+    localMediaPlugin.bindMediaElement(element);
   }
 
   async function publishProfile(profile: CommunityProfile) {
@@ -265,6 +286,21 @@ export default function App() {
           />
         </div>
 
+        <div className="provider-search-actions">
+          <span>Search connected services</span>
+          <div>
+            {providerPlugins.map((plugin) => (
+              <button
+                key={plugin.id}
+                className="button secondary compact"
+                onClick={() => plugin.openSearch(searchQuery)}
+              >
+                {plugin.provider?.shortName} {plugin.displayName}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="shelf-heading">
           <h2>Titles</h2>
           <span>{filteredCatalog.length} results</span>
@@ -350,7 +386,7 @@ export default function App() {
         <section className="playback-studio">
           <div className="studio-video">
             {source ? (
-              <video ref={videoRef} src={source.url} controls playsInline />
+              <video ref={bindVideoElement} src={source.url} controls playsInline />
             ) : (
               <div className="studio-empty">
                 <span className="three-d-logo large-logo">3D</span>
@@ -418,7 +454,7 @@ export default function App() {
             user={user}
             onSignIn={signIn}
             onSignOut={signOut}
-            onProviderOpened={providerOpened}
+            onProviderConnect={connectProvider}
             onUpload={() => user ? setShowUpload(true) : undefined}
           />
         );
