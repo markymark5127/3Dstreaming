@@ -130,3 +130,20 @@ VITE_STREAMING_REGION=US
 ```
 
 For Login with Amazon, register the HTTPS origin used by 3Dstreaming as an Allowed JavaScript Origin in the Amazon developer security profile.
+
+
+### Optional provider-session confirmation bridge
+
+For Netflix, Disney+, and HBO Max, install the unpacked extension in `provider-session-bridge/`.
+
+After Chrome assigns the extension an id, add:
+
+```
+VITE_PROVIDER_BRIDGE_EXTENSION_ID=<extension-id>
+```
+
+Then sign in on the provider's real website and click the injected **I'm signed in — confirm <Provider>** button. Back in 3Dstreaming, Account → **Check confirmation** records that provider as `bridge-verified`.
+
+The bridge never reads or copies provider cookies, passwords, access tokens, DRM keys, or video frames. It stores only the provider id, confirmation timestamp, and provider page URL.
+
+For production, add the deployed 3Dstreaming origin to `provider-session-bridge/manifest.json` under `externally_connectable.matches`.
