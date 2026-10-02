@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "41654621-2451-4d9c-baf9-0062d8522b39",
+  "title": "Big Buck Bunny",
+  "editionId": "720p-h264",
+  "sourceHints": [
+    "local",
+    "720p",
+    "h264"
+  ],
+  "fingerprint": {
+    "durationSeconds": 596.461667,
+    "aspectRatio": 1.7777777777777777
+  },
+  "tracks": [
+    {
+      "kind": "depth",
+      "url": "big-buck-bunny-720p-h264.depth.webm",
+      "codec": "vp9",
+      "fps": 6,
+      "width": 320,
+      "height": 180,
+      "timeOffsetSeconds": 0
+    }
+  ],
+  "defaults": {
+    "depthStrength": 0.58,
+    "convergence": 0.5,
+    "popOutLimit": 0.18
+  },
+  "notes": "Generated locally by 3Dstreaming using Depth Anything V2 Small (depth-anything-v2-small). Repository copy preserves 320x180 / 6 fps mapping geometry."
+}
